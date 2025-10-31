@@ -318,8 +318,8 @@ export function SignupForm({ isAdmin = false, adminCode = null }: SignupFormProp
                     <Input 
                       placeholder="you@example.com" 
                       {...field}
-                      onBlur={async (e) => {
-                        field.onBlur(e);
+                      onBlur={async () => {
+                        field.onBlur();
                         if (field.value) {
                           const result = await validateEmailAsync(field.value);
                           if (result !== true) {
@@ -373,8 +373,8 @@ export function SignupForm({ isAdmin = false, adminCode = null }: SignupFormProp
                     <Input 
                       placeholder="+1 234 567 8900" 
                       {...field}
-                      onBlur={async (e) => {
-                        field.onBlur(e);
+                      onBlur={async () => {
+                        field.onBlur();
                         if (field.value && field.value.length >= 10) {
                           const result = await validateContactNoAsync(field.value);
                           if (result !== true) {
@@ -512,8 +512,8 @@ export function SignupForm({ isAdmin = false, adminCode = null }: SignupFormProp
                       placeholder="••••••••"
                       {...field}
                       className="pr-10"
-                      onBlur={(e) => {
-                        field.onBlur(e);
+                      onBlur={() => {
+                        field.onBlur();
                         const pwd = form.getValues('password');
                         const cpwd = form.getValues('confirmPassword');
                         // Only show notice if both fields have values
