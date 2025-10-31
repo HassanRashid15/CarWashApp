@@ -16,7 +16,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { motion } from 'framer-motion';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { Eye, EyeOff, Upload, X } from 'lucide-react';
@@ -35,7 +35,96 @@ export function SignupForm({ isAdmin = false, adminCode = null }: SignupFormProp
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [profileImagePreview, setProfileImagePreview] = useState<string | null>(null);
   const [profileImageFile, setProfileImageFile] = useState<File | null>(null);
+  const [isCheckingEmail, setIsCheckingEmail] = useState(false);
+  const [isCheckingContact, setIsCheckingContact] = useState(false);
+  const [emailNotice, setEmailNotice] = useState<string | null>(null);
+  const [contactNotice, setContactNotice] = useState<string | null>(null);
+  const [passwordNotice, setPasswordNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const router = useRouter();
+  
+  // Debounce timers
+  const emailDebounceTimer = useRef<NodeJS.Timeout | null>(null);
+  const contactDebounceTimer = useRef<NodeJS.Timeout | null>(null);
+  const emailNoticeTimer = useRef<NodeJS.Timeout | null>(null);
+  const contactNoticeTimer = useRef<NodeJS.Timeout | null>(null);
+  const passwordNoticeTimer = useRef<NodeJS.Timeout | null>(null);
+
+  // Async validation function for duplicates
+  const checkDuplicate = useCallback(async (email?: string, contactNo?: string) => {
+    if (!email && !contactNo) return { emailExists: false, contactNoExists: false };
+    
+    try {
+      const response = await fetch('/api/check-duplicates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, contactNo }),
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to check duplicates');
+      }
+      
+      const data = await response.json();
+      return data;
+    } catch (error) {
+      console.error('Duplicate check error:', error);
+      return { emailExists: false, contactNoExists: false };
+    }
+  }, []);
+
+  // Debounced email validation
+  const validateEmailAsync = useCallback(async (email: string): Promise<string | true> => {
+    // Clear previous timer
+    if (emailDebounceTimer.current) {
+      clearTimeout(emailDebounceTimer.current);
+    }
+
+    // Basic email format validation
+    if (!email.includes('@') || !email.includes('.')) {
+      return true; // Let zod handle format validation
+    }
+
+    return new Promise((resolve) => {
+      emailDebounceTimer.current = setTimeout(async () => {
+        setIsCheckingEmail(true);
+        const result = await checkDuplicate(email);
+        setIsCheckingEmail(false);
+        
+        if (result.emailExists) {
+          resolve('An account with this email already exists. Please use a different email or sign in instead.');
+        } else {
+          resolve(true);
+        }
+      }, 500); // 500ms debounce
+    });
+  }, [checkDuplicate]);
+
+  // Debounced contact number validation
+  const validateContactNoAsync = useCallback(async (contactNo: string): Promise<string | true> => {
+    // Clear previous timer
+    if (contactDebounceTimer.current) {
+      clearTimeout(contactDebounceTimer.current);
+    }
+
+    // Basic contact number validation
+    if (contactNo.length < 10) {
+      return true; // Let zod handle length validation
+    }
+
+    return new Promise((resolve) => {
+      contactDebounceTimer.current = setTimeout(async () => {
+        setIsCheckingContact(true);
+        const result = await checkDuplicate(undefined, contactNo);
+        setIsCheckingContact(false);
+        
+        if (result.contactNoExists) {
+          resolve('An account with this contact number already exists. Please use a different contact number.');
+        } else {
+          resolve(true);
+        }
+      }, 500); // 500ms debounce
+    });
+  }, [checkDuplicate]);
 
   const form = useForm<FormData>({
     resolver: zodResolver(signupSchema),
@@ -48,7 +137,29 @@ export function SignupForm({ isAdmin = false, adminCode = null }: SignupFormProp
       confirmPassword: '',
       profileImage: undefined,
     },
+    mode: 'onBlur', // Validate on blur for better UX
   });
+
+  // Cleanup debounce timers on unmount
+  useEffect(() => {
+    return () => {
+      if (emailDebounceTimer.current) {
+        clearTimeout(emailDebounceTimer.current);
+      }
+      if (contactDebounceTimer.current) {
+        clearTimeout(contactDebounceTimer.current);
+      }
+      if (emailNoticeTimer.current) {
+        clearTimeout(emailNoticeTimer.current);
+      }
+      if (contactNoticeTimer.current) {
+        clearTimeout(contactNoticeTimer.current);
+      }
+      if (passwordNoticeTimer.current) {
+        clearTimeout(passwordNoticeTimer.current);
+      }
+    };
+  }, []);
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -115,7 +226,7 @@ export function SignupForm({ isAdmin = false, adminCode = null }: SignupFormProp
         sessionStorage.setItem('profileImageUrl', imageUrl);
       }
 
-      await fetch('/api/resend', {
+      const resendResponse = await fetch('/api/resend', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -132,6 +243,11 @@ export function SignupForm({ isAdmin = false, adminCode = null }: SignupFormProp
           adminCode: adminCode, // Pass validated admin code for new admin signup
         }),
       });
+
+      if (!resendResponse.ok) {
+        const errorData = await resendResponse.json();
+        throw new Error(errorData.error || 'Failed to send verification email');
+      }
 
       router.push('/auth/verify');
     } catch (error) {
@@ -198,9 +314,50 @@ export function SignupForm({ isAdmin = false, adminCode = null }: SignupFormProp
               <FormItem>
                 <FormLabel>Email</FormLabel>
                 <FormControl>
-                  <Input placeholder="you@example.com" {...field} />
+                  <div className="relative">
+                    <Input 
+                      placeholder="you@example.com" 
+                      {...field}
+                      onBlur={async (e) => {
+                        field.onBlur(e);
+                        if (field.value) {
+                          const result = await validateEmailAsync(field.value);
+                          if (result !== true) {
+                            form.setError('email', { message: result });
+                            // Show transient notice for 5s
+                            setEmailNotice(String(result));
+                            if (emailNoticeTimer.current) clearTimeout(emailNoticeTimer.current);
+                            emailNoticeTimer.current = setTimeout(() => setEmailNotice(null), 5000);
+                          } else {
+                            form.clearErrors('email');
+                            setEmailNotice(null);
+                          }
+                        }
+                      }}
+                      onChange={(e) => {
+                        field.onChange(e);
+                        // Clear errors while typing
+                        if (form.formState.errors.email?.message?.includes('already exists')) {
+                          form.clearErrors('email');
+                        }
+                        // Clear transient notice immediately on typing
+                        if (emailNotice) {
+                          setEmailNotice(null);
+                          if (emailNoticeTimer.current) clearTimeout(emailNoticeTimer.current);
+                        }
+                      }}
+                    />
+                    {isCheckingEmail && (
+                      <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                        <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-blue-600"></div>
+                      </div>
+                    )}
+                  </div>
                 </FormControl>
                 <FormMessage />
+                {emailNotice && (
+                  <div className="text-xs text-red-600 mt-1">{emailNotice}</div>
+                )}
               </FormItem>
             )}
           />
@@ -212,9 +369,50 @@ export function SignupForm({ isAdmin = false, adminCode = null }: SignupFormProp
               <FormItem>
                 <FormLabel>Contact Number</FormLabel>
                 <FormControl>
-                  <Input placeholder="+1 234 567 8900" {...field} />
+                  <div className="relative">
+                    <Input 
+                      placeholder="+1 234 567 8900" 
+                      {...field}
+                      onBlur={async (e) => {
+                        field.onBlur(e);
+                        if (field.value && field.value.length >= 10) {
+                          const result = await validateContactNoAsync(field.value);
+                          if (result !== true) {
+                            form.setError('contactNo', { message: result });
+                            // Show transient notice for 5s
+                            setContactNotice(String(result));
+                            if (contactNoticeTimer.current) clearTimeout(contactNoticeTimer.current);
+                            contactNoticeTimer.current = setTimeout(() => setContactNotice(null), 5000);
+                          } else {
+                            form.clearErrors('contactNo');
+                            setContactNotice(null);
+                          }
+                        }
+                      }}
+                      onChange={(e) => {
+                        field.onChange(e);
+                        // Clear errors while typing
+                        if (form.formState.errors.contactNo?.message?.includes('already exists')) {
+                          form.clearErrors('contactNo');
+                        }
+                        // Clear transient notice immediately on typing
+                        if (contactNotice) {
+                          setContactNotice(null);
+                          if (contactNoticeTimer.current) clearTimeout(contactNoticeTimer.current);
+                        }
+                      }}
+                    />
+                    {isCheckingContact && (
+                      <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                        <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-blue-600"></div>
+                      </div>
+                    )}
+                  </div>
                 </FormControl>
                 <FormMessage />
+                {contactNotice && (
+                  <div className="text-xs text-red-600 mt-1">{contactNotice}</div>
+                )}
               </FormItem>
             )}
           />
@@ -314,6 +512,30 @@ export function SignupForm({ isAdmin = false, adminCode = null }: SignupFormProp
                       placeholder="••••••••"
                       {...field}
                       className="pr-10"
+                      onBlur={(e) => {
+                        field.onBlur(e);
+                        const pwd = form.getValues('password');
+                        const cpwd = form.getValues('confirmPassword');
+                        // Only show notice if both fields have values
+                        if (pwd && cpwd) {
+                          // Clear any existing notice/timer first
+                          if (passwordNoticeTimer.current) clearTimeout(passwordNoticeTimer.current);
+                          if (pwd === cpwd) {
+                            setPasswordNotice({ type: 'success', text: 'Passwords match' });
+                          } else {
+                            setPasswordNotice({ type: 'error', text: 'Passwords do not match' });
+                          }
+                          passwordNoticeTimer.current = setTimeout(() => setPasswordNotice(null), 3000);
+                        }
+                      }}
+                      onChange={(e) => {
+                        field.onChange(e);
+                        // Remove any existing notice immediately when typing
+                        if (passwordNotice) {
+                          setPasswordNotice(null);
+                          if (passwordNoticeTimer.current) clearTimeout(passwordNoticeTimer.current);
+                        }
+                      }}
                     />
                     <button
                       type="button"
@@ -330,6 +552,11 @@ export function SignupForm({ isAdmin = false, adminCode = null }: SignupFormProp
                   </div>
                 </FormControl>
                 <FormMessage />
+                {passwordNotice && (
+                  <div className={`text-xs mt-1 ${passwordNotice.type === 'success' ? 'text-green-600' : 'text-red-600'}`}>
+                    {passwordNotice.text}
+                  </div>
+                )}
               </FormItem>
             )}
           />

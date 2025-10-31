@@ -29,6 +29,40 @@ export async function POST(request: NextRequest) {
     switch (type) {
       case 'verification':
         const supabase = createAdminClient();
+        
+        // Check for duplicates before signup (only for new signups, not password resets)
+        if (!isPasswordReset) {
+          // Check if email already exists in auth.users
+          const { data: existingUsers } = await supabase.auth.admin.listUsers();
+          const emailExists = existingUsers?.users?.some(user => 
+            user.email?.toLowerCase() === email.toLowerCase()
+          );
+          
+          if (emailExists) {
+            return NextResponse.json(
+              { error: 'An account with this email already exists. Please use a different email or sign in instead.' },
+              { status: 409 }
+            );
+          }
+          
+          // Check if contact number already exists in profiles table
+          if (contactNo) {
+            const { data: existingProfile } = await supabase
+              .from('profiles')
+              .select('id, contact_no, email')
+              .eq('contact_no', contactNo)
+              .maybeSingle();
+            
+            // If contact number exists for another user
+            if (existingProfile) {
+              return NextResponse.json(
+                { error: 'An account with this contact number already exists. Please use a different contact number.' },
+                { status: 409 }
+              );
+            }
+          }
+        }
+        
         const res = await supabase.auth.admin.generateLink({
           type: isPasswordReset ? 'recovery' : 'signup',
           email,

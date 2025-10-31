@@ -61,6 +61,25 @@ export async function POST(request: NextRequest) {
       console.log('User data fetch:', { userData, userError });
       
       if (userData?.user?.email) {
+        // Additional safety check: Verify contact number doesn't already exist
+        if (contactNo) {
+          const { data: existingContactProfile } = await supabase
+            .from('profiles')
+            .select('id, contact_no, email')
+            .eq('contact_no', contactNo)
+            .neq('id', userId) // Exclude current user
+            .maybeSingle();
+          
+          // If contact number exists for another user
+          if (existingContactProfile) {
+            console.error('Duplicate contact number detected:', contactNo);
+            return NextResponse.json(
+              { error: 'An account with this contact number already exists. Please use a different contact number.' },
+              { status: 409 }
+            );
+          }
+        }
+        
         // Generate new admin code for admin signup (if not provided, generate new one)
         let finalAdminCode = null as string | null;
         
@@ -98,6 +117,15 @@ export async function POST(request: NextRequest) {
 
         if (createError) {
           console.error('Profile creation error:', createError);
+          
+          // Check if it's a duplicate contact number constraint error
+          if (createError.message?.includes('contact_no') || createError.message?.includes('duplicate')) {
+            return NextResponse.json(
+              { error: 'An account with this contact number already exists. Please use a different contact number.' },
+              { status: 409 }
+            );
+          }
+          
           return NextResponse.json(
             { error: 'Failed to create profile: ' + createError.message },
             { status: 500 }
