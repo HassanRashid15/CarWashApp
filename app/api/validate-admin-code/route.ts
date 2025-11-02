@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/utils/supabase/server';
+import { createAdminClient } from '@/utils/supabase/server';
 
 export async function POST(request: NextRequest) {
   try {
@@ -12,7 +12,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const supabase = await createClient();
+    // Use admin client to bypass RLS for validation
+    const supabase = createAdminClient();
     const normalized = code.trim().toUpperCase();
 
     if (!/^ACW_\d{3,}$/.test(normalized)) {
@@ -31,13 +32,17 @@ export async function POST(request: NextRequest) {
       .maybeSingle();
 
     if (screenErr) {
-      return NextResponse.json(
-        { valid: false, error: 'Database error validating code' },
-        { status: 500 }
-      );
-    }
-
-    if (screenRow) {
+      // If table doesn't exist, that's okay - fall through to profiles check
+      if (screenErr.code === '42P01' || screenErr.message?.includes('does not exist')) {
+        console.log('admin_screencode table does not exist, checking profiles...');
+      } else {
+        console.error('Error checking admin_screencode:', screenErr);
+        return NextResponse.json(
+          { valid: false, error: 'Database error validating code', details: screenErr.message },
+          { status: 500 }
+        );
+      }
+    } else if (screenRow) {
       return NextResponse.json({ valid: true });
     }
 
@@ -50,16 +55,18 @@ export async function POST(request: NextRequest) {
       .maybeSingle();
 
     if (error) {
+      console.error('Error checking profiles:', error);
       return NextResponse.json(
-        { valid: false, error: 'Database error validating code' },
+        { valid: false, error: 'Database error validating code', details: error.message },
         { status: 500 }
       );
     }
 
     return NextResponse.json({ valid: Boolean(data) });
   } catch (err) {
+    console.error('Validate admin code error:', err);
     return NextResponse.json(
-      { valid: false, error: 'Server error' },
+      { valid: false, error: 'Server error', details: err instanceof Error ? err.message : 'Unknown error' },
       { status: 500 }
     );
   }

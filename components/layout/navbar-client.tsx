@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { ThemeToggle } from '@/components/theme/theme-toggle';
-import { Sparkles, MapPin, Calendar } from 'lucide-react';
+import { Droplet, MapPin, Calendar } from 'lucide-react';
 
 interface NavbarClientProps {
   initialRole: string | null;
@@ -82,11 +82,11 @@ export function NavbarClient({ initialRole }: NavbarClientProps) {
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
           <Link href="/" className="flex items-center space-x-2">
-            <div className="p-2 bg-primary rounded-lg">
-              <Sparkles className="h-5 w-5 text-primary-foreground" />
+            <div className="p-2 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-lg">
+              <Droplet className="h-5 w-5 text-white" />
             </div>
-            <span className="text-xl font-bold bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">
-              CarWash
+            <span className="text-xl font-bold bg-gradient-to-r from-blue-600 to-cyan-500 bg-clip-text text-transparent">
+              AquaVance
             </span>
           </Link>
 

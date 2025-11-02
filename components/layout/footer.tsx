@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { Sparkles } from 'lucide-react';
+import { Droplet } from 'lucide-react';
 
 export function Footer() {
   const currentYear = new Date().getFullYear();
@@ -11,10 +11,10 @@ export function Footer() {
           {/* Brand Section */}
           <div className="space-y-4">
             <Link href="/" className="flex items-center space-x-2">
-              <div className="p-2 bg-primary rounded-lg">
-                <Sparkles className="h-5 w-5 text-primary-foreground" />
+              <div className="p-2 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-lg">
+                <Droplet className="h-5 w-5 text-white" />
               </div>
-              <span className="text-xl font-bold">CarWash</span>
+              <span className="text-xl font-bold bg-gradient-to-r from-blue-600 to-cyan-500 bg-clip-text text-transparent">AquaVance</span>
             </Link>
             <p className="text-sm text-muted-foreground max-w-xs">
               Professional car wash services that keep your vehicle shining like new.
@@ -104,7 +104,7 @@ export function Footer() {
             <h3 className="font-semibold mb-4">Contact</h3>
             <ul className="space-y-2">
               <li className="text-sm text-muted-foreground">
-                Email: info@carwash.com
+                Email: info@aquavance.com
               </li>
               <li className="text-sm text-muted-foreground">
                 Phone: +1 (555) 123-4567
@@ -120,7 +120,7 @@ export function Footer() {
         <div className="mt-8 pt-8 border-t border-border">
           <div className="flex flex-col md:flex-row justify-between items-center space-y-4 md:space-y-0">
             <p className="text-sm text-muted-foreground">
-              © {currentYear} CarWash. All rights reserved.
+              © {currentYear} AquaVance. All rights reserved.
             </p>
             <div className="flex space-x-6">
               <Link

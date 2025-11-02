@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'CarWash - Professional Car Care Services',
+  title: 'AquaVance - Professional Car Care Services',
   description: 'Professional car wash and detailing services tailored to your needs',
 };
 

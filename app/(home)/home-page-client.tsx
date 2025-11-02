@@ -2,16 +2,33 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Sparkles, Car, Shield, Clock, Star, User, ShieldCheck, Loader2 } from 'lucide-react';
+import { Sparkles, Car, Shield, Clock, Star, User, ShieldCheck, Loader2, Droplet, Sparkles as SparklesIcon, CheckCircle2, MapPin, Phone, Mail, Calendar, Award, Zap, Users, ListOrdered, RefreshCw } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface HomePageClientProps {
   initialRole: string | null;
+}
+
+interface QueueEntry {
+  id: string;
+  queue_number: number;
+  status: string;
+  service_type: string;
+  created_at?: string;
+  customer?: {
+    id: string;
+    name: string;
+  } | null;
+  worker?: {
+    id: string;
+    name: string;
+  } | null;
 }
 
 export function HomePageClient({ initialRole }: HomePageClientProps) {
@@ -21,6 +38,8 @@ export function HomePageClient({ initialRole }: HomePageClientProps) {
   const [adminCode, setAdminCode] = useState('');
   const [adminCodeError, setAdminCodeError] = useState<string | null>(null);
   const [isValidatingCode, setIsValidatingCode] = useState(false);
+  const [queueEntries, setQueueEntries] = useState<QueueEntry[]>([]);
+  const [isLoadingQueue, setIsLoadingQueue] = useState(true);
   
 
   useEffect(() => {
@@ -29,6 +48,49 @@ export function HomePageClient({ initialRole }: HomePageClientProps) {
       document.cookie = `userRole=${selectedRole}; path=/; max-age=31536000`; // 1 year
     }
   }, [selectedRole]);
+
+  // Fetch queue entries
+  useEffect(() => {
+    fetchQueue();
+    // Auto-refresh every 30 seconds
+    const interval = setInterval(fetchQueue, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const fetchQueue = async () => {
+    try {
+      setIsLoadingQueue(true);
+      const response = await fetch('/api/queue/public');
+      const data = await response.json();
+      
+      if (response.ok) {
+        setQueueEntries(data.queue || []);
+        // Log error if present in response
+        if (data.error) {
+          console.error('Queue API error:', data.error);
+        }
+      } else {
+        console.error('Failed to fetch queue:', data);
+        setQueueEntries([]);
+      }
+    } catch (error) {
+      console.error('Failed to fetch queue:', error);
+      setQueueEntries([]);
+    } finally {
+      setIsLoadingQueue(false);
+    }
+  };
+
+  const getServiceTypeLabel = (type: string) => {
+    const labels: Record<string, string> = {
+      'wash': 'Basic Wash',
+      'detailing': 'Detailing',
+      'wax': 'Wax',
+      'interior': 'Interior Clean',
+      'full_service': 'Full Service'
+    };
+    return labels[type] || type;
+  };
 
   const handleRoleSelect = (role: 'user' | 'admin') => {
     if (role === 'user') {
@@ -128,11 +190,11 @@ export function HomePageClient({ initialRole }: HomePageClientProps) {
                       initial={{ scale: 0 }}
                       animate={{ scale: 1 }}
                       transition={{ delay: 0.2, type: 'spring' }}
-                      className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-primary/10 mb-4"
+                      className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gradient-to-br from-blue-500/20 to-cyan-500/20 mb-4"
                     >
-                      <Sparkles className="h-8 w-8 text-primary" />
+                      <Droplet className="h-8 w-8 text-blue-500 fill-blue-500/20" />
                     </motion.div>
-                    <h2 className="text-2xl font-bold mb-2">Welcome to CarWash</h2>
+                    <h2 className="text-2xl font-bold mb-2">Welcome to AquaVance</h2>
                     <p className="text-muted-foreground">
                       {showAdminCodeInput 
                         ? 'Enter your admin code to continue'
@@ -264,168 +326,561 @@ export function HomePageClient({ initialRole }: HomePageClientProps) {
       </AnimatePresence>
 
       {/* Hero Section */}
-      <section className="relative overflow-hidden bg-gradient-to-br from-primary/5 via-background to-primary/5 pt-16">
-        <div className="container mx-auto px-4 sm:px-6 lg:px-8 pt-20 pb-32">
-          <div className="max-w-4xl mx-auto text-center">
-            <div className="inline-flex items-center space-x-2 px-4 py-2 rounded-full bg-primary/10 text-primary mb-8">
-              <Sparkles className="h-4 w-4" />
-              <span className="text-sm font-medium">Premium Car Care Services</span>
+      <section className="relative overflow-hidden bg-gradient-to-br from-blue-50 via-white to-blue-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 pt-16">
+        {/* Background decorative elements */}
+        <div className="absolute inset-0 overflow-hidden">
+          <div className="absolute -top-40 -right-40 w-80 h-80 bg-primary/5 rounded-full blur-3xl"></div>
+          <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-blue-500/5 rounded-full blur-3xl"></div>
+        </div>
+        
+        <div className="container mx-auto px-4 sm:px-6 lg:px-8 pt-24 pb-32 relative z-10">
+          <div className="max-w-7xl mx-auto">
+            <div className="grid md:grid-cols-2 gap-12 items-center">
+              {/* Left side - Content */}
+              <motion.div
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.6 }}
+                className="text-center md:text-left"
+              >
+                <div className="inline-flex items-center space-x-2 px-4 py-2 rounded-full bg-primary/10 text-primary mb-6 animate-pulse">
+                  <Droplet className="h-4 w-4 fill-current" />
+                  <span className="text-sm font-medium">Professional Car Care</span>
             </div>
             
-            <h1 className="text-4xl sm:text-5xl md:text-6xl font-bold mb-6 bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">
-              Keep Your Car Shining
+                <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-extrabold mb-6 leading-tight">
+                  <span className="bg-gradient-to-r from-blue-600 via-blue-500 to-cyan-500 dark:from-blue-400 dark:via-cyan-400 dark:to-blue-500 bg-clip-text text-transparent">
+                    Shine Bright,
+                  </span>
               <br />
-              <span className="bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">
-                Like New
+                  <span className="text-foreground">
+                    Drive Proud
               </span>
             </h1>
             
-            <p className="text-lg sm:text-xl text-muted-foreground mb-10 max-w-2xl mx-auto">
-              Professional car wash and detailing services tailored to your needs. 
-              Book your appointment today and experience the difference.
-            </p>
-            
-            {/* Show different buttons based on role - SSR rendered */}
+                <p className="text-lg sm:text-xl text-muted-foreground mb-8 max-w-xl leading-relaxed">
+                  Experience premium car wash and detailing services that keep your vehicle looking 
+                  showroom-ready. Professional care, eco-friendly solutions, and exceptional results.
+                </p>
+                
+                {/* Stats */}
+                <div className="flex flex-wrap gap-6 mb-8 justify-center md:justify-start">
+                  <div className="flex items-center space-x-2">
+                    <Users className="h-5 w-5 text-primary" />
+                    <span className="text-sm font-semibold">10K+ Happy Customers</span>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <Star className="h-5 w-5 text-yellow-500 fill-yellow-500" />
+                    <span className="text-sm font-semibold">4.9/5 Rating</span>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <Award className="h-5 w-5 text-primary" />
+                    <span className="text-sm font-semibold">5+ Years Experience</span>
+                  </div>
+                </div>
+                
+                {/* CTA Buttons */}
             {selectedRole === 'user' ? (
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="flex flex-col sm:flex-row items-center justify-center gap-4"
+                    transition={{ delay: 0.3 }}
+                    className="flex flex-col sm:flex-row items-center gap-4"
               >
-                <Button size="lg" className="text-base px-8">
-                  Location
+                    <Button size="lg" className="text-base px-8 py-6 text-lg w-full sm:w-auto">
+                      <Calendar className="mr-2 h-5 w-5" />
+                      Book Appointment
                 </Button>
-                <Button variant="outline" size="lg" className="text-base px-8">
-                  Book Now
+                    <Button variant="outline" size="lg" className="text-base px-8 py-6 text-lg w-full sm:w-auto">
+                      <MapPin className="mr-2 h-5 w-5" />
+                      Find Location
                 </Button>
               </motion.div>
             ) : selectedRole === 'admin' ? (
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="flex flex-col sm:flex-row items-center justify-center gap-4"
+                    transition={{ delay: 0.3 }}
+                    className="flex flex-col sm:flex-row items-center gap-4"
               >
                 <Link href="/auth/signup?role=admin">
-                  <Button size="lg" className="text-base px-8">
+                      <Button size="lg" className="text-base px-8 py-6 text-lg w-full sm:w-auto">
                     Get Started
                   </Button>
                 </Link>
                 <Link href="/auth/login?role=admin">
-                  <Button variant="outline" size="lg" className="text-base px-8">
+                      <Button variant="outline" size="lg" className="text-base px-8 py-6 text-lg w-full sm:w-auto">
                     Sign In
                   </Button>
                 </Link>
               </motion.div>
             ) : null}
+              </motion.div>
+              
+              {/* Right side - Visual */}
+              <motion.div
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.6, delay: 0.2 }}
+                className="relative hidden md:block"
+              >
+                <div className="relative w-full h-[500px] md:h-[600px] lg:h-[650px]">
+                  {/* Image container with overlay */}
+                  <div className="relative w-full h-full rounded-3xl overflow-visible">
+                    {/* Glow effect - outside container so it shows around image */}
+                    <div className="absolute -inset-4 rounded-3xl bg-gradient-to-br from-blue-400/40 via-cyan-400/30 to-blue-500/40 blur-3xl animate-pulse"></div>
+                    <div className="absolute -inset-2 rounded-3xl bg-gradient-to-br from-blue-500/30 via-cyan-400/20 to-blue-400/30 blur-xl"></div>
+                    
+                    {/* Hero car washing image - local image with drop shadow on car only */}
+                    <div className="relative w-full h-full flex items-center justify-center" style={{ overflow: 'visible' }}>
+                      <div 
+                        className="relative inline-block"
+                        style={{
+                          filter: 'drop-shadow(0 25px 50px rgba(59, 130, 246, 0.5)) drop-shadow(0 15px 30px rgba(6, 182, 212, 0.4)) drop-shadow(0 8px 16px rgba(59, 130, 246, 0.3))',
+                          maxWidth: '90%',
+                          maxHeight: '90%'
+                        }}
+                      >
+                        <img
+                          src="/herocar.png"
+                          alt="Professional car washing service"
+                          className="w-auto h-auto max-w-full max-h-full block"
+                          style={{
+                            width: 'auto',
+                            height: 'auto',
+                            maxWidth: '100%',
+                            maxHeight: '100%',
+                            objectFit: 'contain'
+                          }}
+                        />
+                      </div>
+                    </div>
+                    
+                    {/* Gradient overlay for better text readability */}
+                    <div className="absolute inset-0 bg-gradient-to-t from-blue-900/40 via-transparent to-transparent z-[1]"></div>
+                    
+                    {/* Floating decorative elements */}
+                    <motion.div
+                      animate={{ y: [0, -20, 0] }}
+                      transition={{ duration: 3, repeat: Infinity }}
+                      className="absolute top-10 right-10 z-10"
+                    >
+                      <div className="bg-white/90 dark:bg-gray-900/90 backdrop-blur-sm rounded-full p-3 shadow-lg">
+                        <Droplet className="h-8 w-8 text-blue-500" />
+                      </div>
+                    </motion.div>
+                    <motion.div
+                      animate={{ y: [0, 20, 0] }}
+                      transition={{ duration: 4, repeat: Infinity }}
+                      className="absolute bottom-10 left-10 z-10"
+                    >
+                      <div className="bg-white/90 dark:bg-gray-900/90 backdrop-blur-sm rounded-full p-3 shadow-lg">
+                        <SparklesIcon className="h-8 w-8 text-cyan-500" />
+                      </div>
+                    </motion.div>
+                    
+                    {/* Badge overlay */}
+                    <div className="absolute bottom-6 left-6 right-6 z-20">
+                      <div className="bg-white/95 dark:bg-gray-900/95 backdrop-blur-md rounded-xl p-4 shadow-xl">
+                        <div className="flex items-center space-x-3">
+                          <div className="p-2 bg-green-500/20 rounded-lg">
+                            <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400" />
+                          </div>
+                          <div>
+                            <div className="font-semibold text-sm">Professional Service</div>
+                            <div className="text-xs text-muted-foreground">Trusted by 10K+ customers</div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+            </div>
           </div>
         </div>
       </section>
 
       {/* Features Section */}
-      <section className="py-20 bg-background">
+      <section className="py-24 bg-gradient-to-b from-background to-muted/30">
         <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl sm:text-4xl font-bold mb-4">Why Choose Us?</h2>
+          <div className="text-center mb-16">
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.6 }}
+            >
+              <h2 className="text-4xl sm:text-5xl font-extrabold mb-4">
+                Why Choose <span className="bg-gradient-to-r from-blue-600 to-cyan-500 bg-clip-text text-transparent">AquaVance?</span>
+              </h2>
             <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
-              We provide top-notch car care services with attention to detail
+                Experience the difference with our premium car care solutions
             </p>
+            </motion.div>
           </div>
           
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            <div className="p-6 rounded-lg border border-border bg-card hover:shadow-lg transition-shadow">
-              <div className="p-3 bg-primary/10 rounded-lg w-fit mb-4">
-                <Car className="h-6 w-6 text-primary" />
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
+            {[
+              {
+                icon: Droplet,
+                title: 'Eco-Friendly',
+                description: '100% biodegradable products that protect your car and the environment',
+                color: 'text-blue-500',
+                bgColor: 'bg-blue-500/10'
+              },
+              {
+                icon: Shield,
+                title: 'Quality Guaranteed',
+                description: 'Satisfaction guarantee with professional-grade equipment and products',
+                color: 'text-green-500',
+                bgColor: 'bg-green-500/10'
+              },
+              {
+                icon: Zap,
+                title: 'Fast Service',
+                description: 'Quick turnaround without compromising on quality or attention to detail',
+                color: 'text-yellow-500',
+                bgColor: 'bg-yellow-500/10'
+              },
+              {
+                icon: Star,
+                title: 'Expert Team',
+                description: 'Certified professionals with years of experience and training',
+                color: 'text-purple-500',
+                bgColor: 'bg-purple-500/10'
+              }
+            ].map((feature, index) => (
+              <motion.div
+                key={feature.title}
+                initial={{ opacity: 0, y: 30 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.5, delay: index * 0.1 }}
+                whileHover={{ y: -5 }}
+                className="group relative p-8 rounded-2xl border border-border/50 bg-card hover:border-primary/50 hover:shadow-xl transition-all duration-300"
+              >
+                <div className={`p-4 ${feature.bgColor} rounded-xl w-fit mb-6 group-hover:scale-110 transition-transform`}>
+                  <feature.icon className={`h-7 w-7 ${feature.color}`} />
               </div>
-              <h3 className="font-semibold text-lg mb-2">Premium Service</h3>
-              <p className="text-muted-foreground text-sm">
-                Professional-grade equipment and premium products for the best results
-              </p>
-            </div>
-            
-            <div className="p-6 rounded-lg border border-border bg-card hover:shadow-lg transition-shadow">
-              <div className="p-3 bg-primary/10 rounded-lg w-fit mb-4">
-                <Shield className="h-6 w-6 text-primary" />
-              </div>
-              <h3 className="font-semibold text-lg mb-2">Quality Guaranteed</h3>
-              <p className="text-muted-foreground text-sm">
-                We stand behind our work with a satisfaction guarantee
-              </p>
-            </div>
-            
-            <div className="p-6 rounded-lg border border-border bg-card hover:shadow-lg transition-shadow">
-              <div className="p-3 bg-primary/10 rounded-lg w-fit mb-4">
-                <Clock className="h-6 w-6 text-primary" />
-              </div>
-              <h3 className="font-semibold text-lg mb-2">Fast & Efficient</h3>
-              <p className="text-muted-foreground text-sm">
-                Quick service without compromising on quality
-              </p>
-            </div>
-            
-            <div className="p-6 rounded-lg border border-border bg-card hover:shadow-lg transition-shadow">
-              <div className="p-3 bg-primary/10 rounded-lg w-fit mb-4">
-                <Star className="h-6 w-6 text-primary" />
-              </div>
-              <h3 className="font-semibold text-lg mb-2">Expert Team</h3>
-              <p className="text-muted-foreground text-sm">
-                Trained professionals with years of experience
-              </p>
-            </div>
+                <h3 className="font-bold text-xl mb-3 group-hover:text-primary transition-colors">
+                  {feature.title}
+                </h3>
+                <p className="text-muted-foreground leading-relaxed">
+                  {feature.description}
+                </p>
+              </motion.div>
+            ))}
           </div>
         </div>
       </section>
 
       {/* Services Preview Section */}
-      <section id="services" className="py-20 bg-muted/30">
-        <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl sm:text-4xl font-bold mb-4">Our Services</h2>
+      <section id="services" className="py-24 bg-background relative overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-r from-blue-500/5 via-transparent to-cyan-500/5"></div>
+        <div className="container mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.6 }}
+            className="text-center mb-16"
+          >
+            <h2 className="text-4xl sm:text-5xl font-extrabold mb-4">
+              Our <span className="bg-gradient-to-r from-blue-600 to-cyan-500 bg-clip-text text-transparent">Services</span>
+            </h2>
             <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
-              Comprehensive car care solutions for every need
+              Comprehensive car care solutions tailored to your needs and budget
             </p>
+          </motion.div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-12">
+            {[
+              {
+                name: 'Basic Wash',
+                price: '$15',
+                features: ['Exterior wash & dry', 'Tire cleaning', 'Window cleaning', 'Quick vacuum'],
+                popular: false,
+                gradient: 'from-gray-500 to-gray-600'
+              },
+              {
+                name: 'Premium Wash',
+                price: '$35',
+                features: ['Full exterior wash', 'Interior vacuum', 'Dashboard cleaning', 'Tire shine', 'Door jamb clean'],
+                popular: true,
+                gradient: 'from-blue-500 to-cyan-500'
+              },
+              {
+                name: 'Full Detail',
+                price: '$75',
+                features: ['Complete interior detail', 'Exterior wax & polish', 'Engine bay clean', 'Leather conditioning', 'Carpet shampoo'],
+                popular: false,
+                gradient: 'from-purple-500 to-pink-500'
+              }
+            ].map((service, index) => (
+              <motion.div
+                key={service.name}
+                initial={{ opacity: 0, y: 30 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.5, delay: index * 0.1 }}
+                whileHover={{ y: -8, scale: 1.02 }}
+                className={`relative p-8 rounded-2xl border-2 ${
+                  service.popular 
+                    ? 'border-primary shadow-2xl bg-gradient-to-br from-blue-50 to-cyan-50 dark:from-blue-950/20 dark:to-cyan-950/20' 
+                    : 'border-border bg-card hover:border-primary/50'
+                } transition-all duration-300`}
+              >
+                {service.popular && (
+                  <div className="absolute -top-4 left-1/2 -translate-x-1/2">
+                    <span className="bg-gradient-to-r from-blue-600 to-cyan-500 text-white text-xs font-bold px-4 py-1 rounded-full">
+                      MOST POPULAR
+                    </span>
+            </div>
+                )}
+                <div className={`inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br ${service.gradient} mb-6`}>
+                  <Car className="h-8 w-8 text-white" />
+            </div>
+                <h3 className="font-bold text-2xl mb-2">{service.name}</h3>
+                <div className="mb-6">
+                  <span className="text-4xl font-extrabold bg-gradient-to-r from-blue-600 to-cyan-500 bg-clip-text text-transparent">
+                    {service.price}
+                  </span>
+            </div>
+                <ul className="space-y-3 mb-8">
+                  {service.features.map((feature, idx) => (
+                    <li key={idx} className="flex items-start">
+                      <CheckCircle2 className="h-5 w-5 text-green-500 mr-3 mt-0.5 flex-shrink-0" />
+                      <span className="text-muted-foreground">{feature}</span>
+                    </li>
+                  ))}
+                </ul>
+                <Button 
+                  className={`w-full ${service.popular ? '' : 'variant-outline'}`}
+                  variant={service.popular ? 'default' : 'outline'}
+                >
+                  Select Service
+                </Button>
+              </motion.div>
+            ))}
           </div>
           
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            <div className="p-8 rounded-lg border border-border bg-card">
-              <h3 className="font-semibold text-xl mb-3">Basic Wash</h3>
-              <p className="text-muted-foreground mb-4">
-                Exterior wash and dry, tire cleaning, and window cleaning
-              </p>
-              <div className="text-2xl font-bold text-primary">$15</div>
-            </div>
-            
-            <div className="p-8 rounded-lg border border-border bg-card">
-              <h3 className="font-semibold text-xl mb-3">Premium Wash</h3>
-              <p className="text-muted-foreground mb-4">
-                Full exterior wash, interior vacuum, dashboard cleaning, and tire shine
-              </p>
-              <div className="text-2xl font-bold text-primary">$35</div>
-            </div>
-            
-            <div className="p-8 rounded-lg border border-border bg-card">
-              <h3 className="font-semibold text-xl mb-3">Full Detail</h3>
-              <p className="text-muted-foreground mb-4">
-                Complete interior and exterior detailing, waxing, and polish
-              </p>
-              <div className="text-2xl font-bold text-primary">$75</div>
-            </div>
-          </div>
-          
-          <div className="text-center mt-12">
+          <motion.div
+            initial={{ opacity: 0 }}
+            whileInView={{ opacity: 1 }}
+            viewport={{ once: true }}
+            transition={{ delay: 0.4 }}
+            className="text-center"
+          >
             <Link href="/services">
-              <Button variant="outline" size="lg">
+              <Button variant="outline" size="lg" className="text-base px-8">
                 View All Services
               </Button>
             </Link>
-          </div>
+          </motion.div>
+        </div>
+      </section>
+
+      {/* Live Queue System Section */}
+      <section id="queue" className="py-24 bg-gradient-to-br from-blue-50 via-white to-cyan-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 relative overflow-hidden">
+        {/* Background decorative elements */}
+        <div className="absolute inset-0 overflow-hidden">
+          <div className="absolute -top-40 -right-40 w-80 h-80 bg-primary/5 rounded-full blur-3xl"></div>
+          <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-cyan-500/5 rounded-full blur-3xl"></div>
+        </div>
+        
+        <div className="container mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.6 }}
+            className="text-center mb-16"
+          >
+            <div className="inline-flex items-center space-x-2 px-4 py-2 rounded-full bg-primary/10 text-primary mb-6">
+              <ListOrdered className="h-4 w-4" />
+              <span className="text-sm font-medium">Live Queue System</span>
+            </div>
+            <h2 className="text-4xl sm:text-5xl font-extrabold mb-4">
+              Current <span className="bg-gradient-to-r from-blue-600 to-cyan-500 bg-clip-text text-transparent">Queue</span>
+            </h2>
+            <p className="text-muted-foreground text-lg max-w-2xl mx-auto mb-6">
+              View real-time queue status and see where your vehicle stands
+            </p>
+            <Link href="/queue">
+              <Button size="lg" className="bg-gradient-to-r from-blue-600 to-cyan-500 hover:from-blue-700 hover:to-cyan-600 text-white">
+                <ListOrdered className="mr-2 h-5 w-5" />
+                View Full Queue System
+              </Button>
+            </Link>
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.6, delay: 0.2 }}
+            className="max-w-5xl mx-auto"
+          >
+            <Card className="border-2 shadow-2xl backdrop-blur-xl bg-card/95 overflow-hidden">
+              <CardContent className="p-0">
+                {/* Header with refresh button */}
+                <div className="bg-gradient-to-r from-blue-600 to-cyan-500 p-6 flex items-center justify-between">
+                  <div className="flex items-center space-x-3">
+                    <div className="p-2 bg-white/20 rounded-lg backdrop-blur-sm">
+                      <ListOrdered className="h-6 w-6 text-white" />
+                    </div>
+                    <div>
+                      <h3 className="text-xl font-bold text-white">Active Queue</h3>
+                      <p className="text-blue-100 text-sm">
+                        {isLoadingQueue ? 'Loading...' : `${queueEntries.length} ${queueEntries.length === 1 ? 'vehicle' : 'vehicles'} in queue`}
+                      </p>
+                    </div>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={fetchQueue}
+                    disabled={isLoadingQueue}
+                    className="text-white hover:bg-white/20"
+                  >
+                    <RefreshCw className={`h-4 w-4 mr-2 ${isLoadingQueue ? 'animate-spin' : ''}`} />
+                    Refresh
+                  </Button>
+                </div>
+
+                {/* Queue List */}
+                {isLoadingQueue ? (
+                  <div className="flex items-center justify-center py-16">
+                    <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                  </div>
+                ) : queueEntries.length === 0 ? (
+                  <div className="text-center py-16">
+                    <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-muted mb-4">
+                      <ListOrdered className="h-10 w-10 text-muted-foreground" />
+                    </div>
+                    <h4 className="text-xl font-semibold mb-2">Queue is Empty</h4>
+                    <p className="text-muted-foreground">
+                      No vehicles currently in the queue
+                    </p>
+                  </div>
+                ) : (
+                  <div className="divide-y divide-border">
+                    {queueEntries.map((entry, index) => (
+                      <motion.div
+                        key={entry.id}
+                        initial={{ opacity: 0, x: -20 }}
+                        whileInView={{ opacity: 1, x: 0 }}
+                        viewport={{ once: true }}
+                        transition={{ duration: 0.4, delay: index * 0.1 }}
+                        className={`p-6 hover:bg-muted/50 transition-colors ${
+                          entry.status === 'washing' ? 'bg-blue-50/50 dark:bg-blue-950/20' : ''
+                        }`}
+                      >
+                        <div className="flex items-center justify-between flex-wrap gap-4">
+                          {/* Left side - Queue number and customer */}
+                          <div className="flex items-center space-x-4 flex-1 min-w-[200px]">
+                            <div className={`flex items-center justify-center w-16 h-16 rounded-xl font-bold text-xl ${
+                              entry.status === 'washing' 
+                                ? 'bg-blue-500 text-white' 
+                                : entry.status === 'waiting'
+                                ? 'bg-yellow-500 text-white'
+                                : 'bg-muted text-foreground'
+                            }`}>
+                              #{entry.queue_number}
+                            </div>
+                            <div>
+                              <h4 className="font-semibold text-lg mb-1">
+                                {entry.customer?.name || 'Customer'}
+                              </h4>
+                              <div className="flex items-center space-x-3 text-sm text-muted-foreground">
+                                <span className="flex items-center">
+                                  <Car className="h-4 w-4 mr-1" />
+                                  {getServiceTypeLabel(entry.service_type)}
+                                </span>
+                                {entry.worker && (
+                                  <span className="flex items-center">
+                                    <User className="h-4 w-4 mr-1" />
+                                    {entry.worker.name}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Right side - Status badge */}
+                          <div className="flex items-center space-x-4">
+                            <span className={`inline-flex items-center px-4 py-2 rounded-full text-sm font-medium ${
+                              entry.status === 'washing'
+                                ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400 border border-blue-300 dark:border-blue-700'
+                                : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400 border border-yellow-300 dark:border-yellow-700'
+                            }`}>
+                              {entry.status === 'washing' && (
+                                <Loader2 className="h-3 w-3 mr-2 animate-spin" />
+                              )}
+                              {entry.status.charAt(0).toUpperCase() + entry.status.slice(1)}
+                            </span>
+                            {entry.created_at && (
+                              <span className="text-sm text-muted-foreground hidden sm:block">
+                                {(() => {
+                                  const date = new Date(entry.created_at);
+                                  const month = date.toLocaleDateString('en-US', { month: 'short' });
+                                  const day = date.getDate();
+                                  const year = date.getFullYear();
+                                  const time = date.toLocaleTimeString('en-US', {
+                                    hour: '2-digit',
+                                    minute: '2-digit',
+                                    hour12: true
+                                  });
+                                  return `${month} ${day} ${year}, ${time}`;
+                                })()}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </motion.div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Footer info */}
+                <div className="bg-muted/50 p-4 border-t border-border">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <p className="text-sm text-center text-muted-foreground flex-1">
+                      <Clock className="inline h-3 w-3 mr-1" />
+                      Queue updates automatically every 30 seconds
+                    </p>
+                    <Link href="/queue">
+                      <Button variant="outline" size="sm">
+                        View Full Queue
+                        <ListOrdered className="ml-2 h-3 w-3" />
+                      </Button>
+                    </Link>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
         </div>
       </section>
 
       {/* About Preview Section */}
-      <section id="about" className="py-20 bg-background">
+      <section id="about" className="py-24 bg-gradient-to-b from-background to-muted/20">
         <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="max-w-3xl mx-auto text-center">
-            <h2 className="text-3xl sm:text-4xl font-bold mb-6">About CarWash</h2>
+          <div className="grid md:grid-cols-2 gap-12 items-center max-w-6xl mx-auto">
+            <motion.div
+              initial={{ opacity: 0, x: -30 }}
+              whileInView={{ opacity: 1, x: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.6 }}
+            >
+              <div className="inline-flex items-center space-x-2 px-4 py-2 rounded-full bg-primary/10 text-primary mb-6">
+                <Award className="h-4 w-4" />
+                <span className="text-sm font-medium">Established 2018</span>
+              </div>
+              <h2 className="text-4xl sm:text-5xl font-extrabold mb-6">
+                About <span className="bg-gradient-to-r from-blue-600 to-cyan-500 bg-clip-text text-transparent">AquaVance</span>
+              </h2>
             <p className="text-muted-foreground text-lg leading-relaxed mb-6">
               We've been serving the community with professional car care services for over a decade. 
               Our mission is to provide exceptional service that keeps your vehicle looking its best 
@@ -433,53 +888,152 @@ export function HomePageClient({ initialRole }: HomePageClientProps) {
             </p>
             <p className="text-muted-foreground text-lg leading-relaxed mb-8">
               From quick washes to full detailing services, we offer solutions tailored to your needs 
-              and schedule. Book your appointment today and experience the CarWash difference.
+                and schedule. Book your appointment today and experience the AquaVance difference.
             </p>
+              <div className="grid grid-cols-2 gap-6 mb-8">
+                <div className="p-4 rounded-xl bg-card border border-border">
+                  <div className="text-3xl font-bold text-primary mb-1">10K+</div>
+                  <div className="text-sm text-muted-foreground">Happy Customers</div>
+                </div>
+                <div className="p-4 rounded-xl bg-card border border-border">
+                  <div className="text-3xl font-bold text-primary mb-1">5+</div>
+                  <div className="text-sm text-muted-foreground">Years Experience</div>
+                </div>
+              </div>
             <Link href="/about">
-              <Button variant="outline" size="lg">
+                <Button variant="outline" size="lg" className="text-base px-8">
                 Learn More
               </Button>
             </Link>
+            </motion.div>
+            
+            <motion.div
+              initial={{ opacity: 0, x: 30 }}
+              whileInView={{ opacity: 1, x: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.6, delay: 0.2 }}
+              className="relative"
+            >
+              <div className="relative w-full h-[400px] bg-gradient-to-br from-blue-500/20 to-cyan-500/20 rounded-3xl backdrop-blur-sm border border-blue-200/50 dark:border-blue-800/50 overflow-hidden">
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="grid grid-cols-2 gap-4 p-8">
+                    <div className="p-6 bg-white/80 dark:bg-gray-800/80 rounded-xl backdrop-blur-sm">
+                      <Droplet className="h-10 w-10 text-blue-500 mx-auto mb-2" />
+                      <div className="text-center text-sm font-semibold">Eco-Friendly</div>
+                    </div>
+                    <div className="p-6 bg-white/80 dark:bg-gray-800/80 rounded-xl backdrop-blur-sm">
+                      <Star className="h-10 w-10 text-yellow-500 mx-auto mb-2" />
+                      <div className="text-center text-sm font-semibold">Premium Quality</div>
+                    </div>
+                    <div className="p-6 bg-white/80 dark:bg-gray-800/80 rounded-xl backdrop-blur-sm">
+                      <Zap className="h-10 w-10 text-orange-500 mx-auto mb-2" />
+                      <div className="text-center text-sm font-semibold">Fast Service</div>
+                    </div>
+                    <div className="p-6 bg-white/80 dark:bg-gray-800/80 rounded-xl backdrop-blur-sm">
+                      <Users className="h-10 w-10 text-green-500 mx-auto mb-2" />
+                      <div className="text-center text-sm font-semibold">Expert Team</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
           </div>
         </div>
       </section>
 
       {/* CTA Section */}
       {selectedRole === 'user' && (
-        <section className="py-20 bg-gradient-to-r from-primary/10 to-primary/5">
-          <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="max-w-2xl mx-auto text-center">
-              <h2 className="text-3xl sm:text-4xl font-bold mb-4">Ready to Get Started?</h2>
-              <p className="text-muted-foreground text-lg mb-8">
-                Join thousands of satisfied customers and book your appointment today
+        <section className="py-24 bg-gradient-to-br from-blue-600 via-blue-500 to-cyan-500 relative overflow-hidden">
+          <div className="absolute inset-0 bg-grid-white/10 [mask-image:linear-gradient(0deg,white,transparent)]"></div>
+          <div className="container mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.6 }}
+              className="max-w-3xl mx-auto text-center"
+            >
+              <h2 className="text-4xl sm:text-5xl font-extrabold mb-6 text-white">
+                Ready to Get Started?
+              </h2>
+              <p className="text-blue-50 text-lg mb-10 text-lg max-w-2xl mx-auto">
+                Join thousands of satisfied customers. Book your appointment today and give your car the shine it deserves!
               </p>
-              <Button size="lg" className="text-base px-8">
-                Book Now
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+                <Button size="lg" variant="secondary" className="text-base px-8 py-6 text-lg bg-white text-blue-600 hover:bg-blue-50">
+                  <Calendar className="mr-2 h-5 w-5" />
+                  Book Appointment
+                </Button>
+                <Button size="lg" variant="outline" className="text-base px-8 py-6 text-lg border-2 border-white/30 text-white hover:bg-white/10">
+                  View Packages
               </Button>
             </div>
+            </motion.div>
           </div>
         </section>
       )}
 
       {/* Contact Preview Section */}
-      <section id="contact" className="py-20 bg-muted/30">
+      <section id="contact" className="py-24 bg-background">
         <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="max-w-2xl mx-auto text-center">
-            <h2 className="text-3xl sm:text-4xl font-bold mb-4">Get In Touch</h2>
-            <p className="text-muted-foreground text-lg mb-8">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.6 }}
+            className="max-w-4xl mx-auto"
+          >
+            <div className="text-center mb-16">
+              <h2 className="text-4xl sm:text-5xl font-extrabold mb-4">
+                Get In <span className="bg-gradient-to-r from-blue-600 to-cyan-500 bg-clip-text text-transparent">Touch</span>
+              </h2>
+              <p className="text-muted-foreground text-lg">
               Have questions? We're here to help!
             </p>
-            <div className="space-y-4 mb-8">
-              <p className="text-muted-foreground">Email: info@carwash.com</p>
-              <p className="text-muted-foreground">Phone: +1 (555) 123-4567</p>
-              <p className="text-muted-foreground">Hours: Monday - Saturday, 8AM - 6PM</p>
             </div>
+            
+            <div className="grid md:grid-cols-3 gap-8 mb-12">
+              {[
+                { icon: Mail, label: 'Email', value: 'info@aquavance.com', link: 'mailto:info@aquavance.com' },
+                { icon: Phone, label: 'Phone', value: '+1 (555) 123-4567', link: 'tel:+15551234567' },
+                { icon: MapPin, label: 'Location', value: '123 Car Wash St', link: '#' }
+              ].map((contact, index) => (
+                <motion.a
+                  key={contact.label}
+                  href={contact.link}
+                  initial={{ opacity: 0, y: 20 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ duration: 0.5, delay: index * 0.1 }}
+                  whileHover={{ y: -5 }}
+                  className="group p-8 rounded-2xl border border-border bg-card hover:border-primary hover:shadow-lg transition-all text-center"
+                >
+                  <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-primary/10 group-hover:bg-primary/20 mb-4 transition-colors">
+                    <contact.icon className="h-7 w-7 text-primary" />
+                  </div>
+                  <h3 className="font-semibold text-lg mb-2">{contact.label}</h3>
+                  <p className="text-muted-foreground group-hover:text-primary transition-colors">
+                    {contact.value}
+                  </p>
+                </motion.a>
+              ))}
+            </div>
+            
+            <div className="bg-muted/50 rounded-2xl p-8 text-center">
+              <Clock className="h-8 w-8 text-primary mx-auto mb-4" />
+              <h3 className="font-bold text-xl mb-2">Operating Hours</h3>
+              <p className="text-muted-foreground">Monday - Saturday: 8:00 AM - 6:00 PM</p>
+              <p className="text-muted-foreground">Sunday: 10:00 AM - 4:00 PM</p>
+            </div>
+            
+            <div className="text-center mt-12">
             <Link href="/contact">
-              <Button variant="outline" size="lg">
+                <Button variant="outline" size="lg" className="text-base px-8">
                 Contact Us
               </Button>
             </Link>
           </div>
+          </motion.div>
         </div>
       </section>
     </>
