@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { Button } from '@/components/ui/button';
@@ -39,8 +39,9 @@ export function HomePageClient({ initialRole }: HomePageClientProps) {
   const [adminCodeError, setAdminCodeError] = useState<string | null>(null);
   const [isValidatingCode, setIsValidatingCode] = useState(false);
   const [queueEntries, setQueueEntries] = useState<QueueEntry[]>([]);
-  const [isLoadingQueue, setIsLoadingQueue] = useState(true);
-  
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const isInitialLoadRef = useRef(true); // Track if this is the first load
 
   useEffect(() => {
     // Sync with cookie when role changes
@@ -49,37 +50,94 @@ export function HomePageClient({ initialRole }: HomePageClientProps) {
     }
   }, [selectedRole]);
 
-  // Fetch queue entries
-  useEffect(() => {
-    fetchQueue();
-    // Auto-refresh every 30 seconds
-    const interval = setInterval(fetchQueue, 30000);
-    return () => clearInterval(interval);
-  }, []);
+  const queueEntriesRef = useRef<QueueEntry[]>([]); // Use ref to avoid dependency issues
 
-  const fetchQueue = async () => {
+  const fetchQueue = useCallback(async (showLoading = false) => {
     try {
-      setIsLoadingQueue(true);
-      const response = await fetch('/api/queue/public');
+      // Only show loading state on initial load or manual refresh
+      if (showLoading || isInitialLoadRef.current) {
+        setIsInitialLoading(true);
+      }
+      
+      // Add timestamp to prevent browser caching and force fresh data
+      const timestamp = Date.now();
+      const response = await fetch(`/api/queue/public?t=${timestamp}`, {
+        method: 'GET',
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+        },
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
       const data = await response.json();
       
-      if (response.ok) {
-        setQueueEntries(data.queue || []);
+      if (data.queue !== undefined) {
+        const newQueue = Array.isArray(data.queue) ? data.queue : [];
+        // Deep clone to ensure React sees it as new data reference
+        const queueClone = JSON.parse(JSON.stringify(newQueue));
+        
+        // Check if data actually changed using ref
+        const currentQueueStr = JSON.stringify(queueEntriesRef.current);
+        const newQueueStr = JSON.stringify(queueClone);
+        
+        if (currentQueueStr !== newQueueStr) {
+          // Data changed - update both state and ref smoothly
+          queueEntriesRef.current = queueClone;
+          setQueueEntries(queueClone); // This triggers re-render
+          console.log('✅ Home Queue UI updated at', new Date().toLocaleTimeString(), '- Entries:', newQueue.length);
+        } else {
+          console.log('ℹ️ Home: Queue data unchanged, skipping UI update');
+        }
+        
         // Log error if present in response
         if (data.error) {
           console.error('Queue API error:', data.error);
         }
       } else {
-        console.error('Failed to fetch queue:', data);
+        console.warn('No queue data in response:', data);
+        queueEntriesRef.current = [];
         setQueueEntries([]);
       }
     } catch (error) {
       console.error('Failed to fetch queue:', error);
+      queueEntriesRef.current = [];
       setQueueEntries([]);
     } finally {
-      setIsLoadingQueue(false);
+      if (isInitialLoadRef.current) {
+        isInitialLoadRef.current = false;
+        setIsInitialLoading(false);
+      }
     }
-  };
+  }, []); // No dependencies - stable function
+
+  // Fetch queue entries
+  useEffect(() => {
+    // Initial fetch with loading state
+    fetchQueue(true);
+    
+    // Auto-refresh every 10 seconds to catch backend updates (backend refreshes every 15s)
+    // No loading state on auto-refresh to prevent flickering
+    intervalRef.current = setInterval(() => {
+      fetchQueue(false); // Silent refresh - no loading state
+    }, 10000);
+    
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Empty deps - fetchQueue is stable via useCallback
+  
+  // Update ref when state changes
+  useEffect(() => {
+    queueEntriesRef.current = queueEntries;
+  }, [queueEntries]);
 
   const getServiceTypeLabel = (type: string) => {
     const labels: Record<string, string> = {
@@ -90,6 +148,20 @@ export function HomePageClient({ initialRole }: HomePageClientProps) {
       'full_service': 'Full Service'
     };
     return labels[type] || type;
+  };
+
+  const formatDateTime = (dateString?: string) => {
+    if (!dateString) return '—';
+    const date = new Date(dateString);
+    const month = date.toLocaleDateString('en-US', { month: 'short' });
+    const day = date.getDate();
+    const year = date.getFullYear();
+    const time = date.toLocaleTimeString('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
+    });
+    return `${month} ${day} ${year}, ${time}`;
   };
 
   const handleRoleSelect = (role: 'user' | 'admin') => {
@@ -733,24 +805,24 @@ export function HomePageClient({ initialRole }: HomePageClientProps) {
                     <div>
                       <h3 className="text-xl font-bold text-white">Active Queue</h3>
                       <p className="text-blue-100 text-sm">
-                        {isLoadingQueue ? 'Loading...' : `${queueEntries.length} ${queueEntries.length === 1 ? 'vehicle' : 'vehicles'} in queue`}
+                        {isInitialLoading ? 'Loading...' : `${queueEntries.length} ${queueEntries.length === 1 ? 'vehicle' : 'vehicles'} in queue`}
                       </p>
                     </div>
                   </div>
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={fetchQueue}
-                    disabled={isLoadingQueue}
+                    onClick={() => fetchQueue(true)}
+                    disabled={isInitialLoading}
                     className="text-white hover:bg-white/20"
                   >
-                    <RefreshCw className={`h-4 w-4 mr-2 ${isLoadingQueue ? 'animate-spin' : ''}`} />
+                    <RefreshCw className={`h-4 w-4 mr-2 ${isInitialLoading ? 'animate-spin' : ''}`} />
                     Refresh
                   </Button>
                 </div>
 
                 {/* Queue List */}
-                {isLoadingQueue ? (
+                {isInitialLoading ? (
                   <div className="flex items-center justify-center py-16">
                     <Loader2 className="h-8 w-8 animate-spin text-primary" />
                   </div>
@@ -765,22 +837,48 @@ export function HomePageClient({ initialRole }: HomePageClientProps) {
                     </p>
                   </div>
                 ) : (
-                  <div className="divide-y divide-border">
+                  <div className="max-h-[500px] overflow-y-auto custom-scrollbar">
+                    <div className="overflow-x-auto">
+                      <table className="w-full border-collapse">
+                        <thead className="sticky top-0 z-10 bg-muted/50 backdrop-blur-sm border-b border-border">
+                          <tr>
+                            <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                              Queue #
+                            </th>
+                            <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                              Customer
+                            </th>
+                            <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                              Service
+                            </th>
+                            <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider hidden sm:table-cell">
+                              Worker
+                            </th>
+                            <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider hidden md:table-cell">
+                              Time
+                            </th>
+                            <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                              Status
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-border">
                     {queueEntries.map((entry, index) => (
-                      <motion.div
+                            <motion.tr
                         key={entry.id}
                         initial={{ opacity: 0, x: -20 }}
                         whileInView={{ opacity: 1, x: 0 }}
                         viewport={{ once: true }}
-                        transition={{ duration: 0.4, delay: index * 0.1 }}
-                        className={`p-6 hover:bg-muted/50 transition-colors ${
-                          entry.status === 'washing' ? 'bg-blue-50/50 dark:bg-blue-950/20' : ''
-                        }`}
-                      >
-                        <div className="flex items-center justify-between flex-wrap gap-4">
-                          {/* Left side - Queue number and customer */}
-                          <div className="flex items-center space-x-4 flex-1 min-w-[200px]">
-                            <div className={`flex items-center justify-center w-16 h-16 rounded-xl font-bold text-xl ${
+                              transition={{ duration: 0.3, delay: index * 0.05 }}
+                              className={`hover:bg-muted/30 transition-colors ${
+                                entry.status === 'washing' 
+                                  ? 'bg-blue-50/30 dark:bg-blue-950/10 border-l-4 border-l-blue-500' 
+                                  : 'border-l-4 border-l-yellow-500'
+                              }`}
+                            >
+                              {/* Queue Number */}
+                              <td className="px-4 py-3 whitespace-nowrap">
+                                <div className={`inline-flex items-center justify-center w-12 h-12 rounded-lg font-bold text-base shadow-md transition-transform hover:scale-105 ${
                               entry.status === 'washing' 
                                 ? 'bg-blue-500 text-white' 
                                 : entry.status === 'waiting'
@@ -789,57 +887,70 @@ export function HomePageClient({ initialRole }: HomePageClientProps) {
                             }`}>
                               #{entry.queue_number}
                             </div>
-                            <div>
-                              <h4 className="font-semibold text-lg mb-1">
+                              </td>
+                              
+                              {/* Customer */}
+                              <td className="px-4 py-3">
+                                <div className="flex flex-col gap-1">
+                                  <div className="font-semibold text-sm text-foreground">
                                 {entry.customer?.name || 'Customer'}
-                              </h4>
-                              <div className="flex items-center space-x-3 text-sm text-muted-foreground">
-                                <span className="flex items-center">
-                                  <Car className="h-4 w-4 mr-1" />
-                                  {getServiceTypeLabel(entry.service_type)}
+                                  </div>
+                                  <span className="text-xs px-1.5 py-0.5 rounded bg-muted/50 text-muted-foreground font-mono border border-border/50 inline-block w-fit">
+                                    {entry.id.substring(0, 8).toUpperCase()}
                                 </span>
-                                {entry.worker && (
-                                  <span className="flex items-center">
-                                    <User className="h-4 w-4 mr-1" />
-                                    {entry.worker.name}
-                                  </span>
-                                )}
                               </div>
+                              </td>
+                              
+                              {/* Service */}
+                              <td className="px-4 py-3">
+                                <div className="flex items-center gap-1.5 text-sm">
+                                  <Car className="h-3.5 w-3.5 text-muted-foreground" />
+                                  <span className="font-medium">{getServiceTypeLabel(entry.service_type)}</span>
                             </div>
+                              </td>
+                              
+                              {/* Worker */}
+                              <td className="px-4 py-3 hidden sm:table-cell">
+                                {entry.worker ? (
+                                  <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                                    <User className="h-3.5 w-3.5" />
+                                    <span>{entry.worker.name}</span>
                           </div>
-
-                          {/* Right side - Status badge */}
-                          <div className="flex items-center space-x-4">
-                            <span className={`inline-flex items-center px-4 py-2 rounded-full text-sm font-medium ${
+                                ) : (
+                                  <span className="text-sm text-muted-foreground">—</span>
+                                )}
+                              </td>
+                              
+                              {/* Time */}
+                              <td className="px-4 py-3 hidden md:table-cell">
+                                {entry.created_at ? (
+                                  <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                                    <Clock className="h-3.5 w-3.5" />
+                                    <span>{formatDateTime(entry.created_at)}</span>
+                                  </div>
+                                ) : (
+                                  <span className="text-sm text-muted-foreground">—</span>
+                                )}
+                              </td>
+                              
+                              {/* Status */}
+                              <td className="px-4 py-3 whitespace-nowrap">
+                                <span className={`inline-flex items-center px-3 py-1.5 rounded-full text-xs font-semibold shadow-sm ${
                               entry.status === 'washing'
                                 ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400 border border-blue-300 dark:border-blue-700'
                                 : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400 border border-yellow-300 dark:border-yellow-700'
                             }`}>
                               {entry.status === 'washing' && (
-                                <Loader2 className="h-3 w-3 mr-2 animate-spin" />
+                                    <Loader2 className="h-3 w-3 mr-1 animate-spin" />
                               )}
                               {entry.status.charAt(0).toUpperCase() + entry.status.slice(1)}
                             </span>
-                            {entry.created_at && (
-                              <span className="text-sm text-muted-foreground hidden sm:block">
-                                {(() => {
-                                  const date = new Date(entry.created_at);
-                                  const month = date.toLocaleDateString('en-US', { month: 'short' });
-                                  const day = date.getDate();
-                                  const year = date.getFullYear();
-                                  const time = date.toLocaleTimeString('en-US', {
-                                    hour: '2-digit',
-                                    minute: '2-digit',
-                                    hour12: true
-                                  });
-                                  return `${month} ${day} ${year}, ${time}`;
-                                })()}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      </motion.div>
-                    ))}
+                              </td>
+                            </motion.tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 )}
 

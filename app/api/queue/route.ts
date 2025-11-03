@@ -115,6 +115,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Validate payment_method if provided
+    const validPaymentMethods = ['cash', 'easypaisa', 'jazzcash', 'bank_transfer'];
+    if (body.payment_method && !validPaymentMethods.includes(body.payment_method)) {
+      return NextResponse.json(
+        { error: 'Invalid payment method. Must be: cash, easypaisa, jazzcash, or bank_transfer' },
+        { status: 400 }
+      );
+    }
+
     // Get the next queue number
     const { data: lastQueue } = await supabase
       .from('Queue')
@@ -149,6 +158,14 @@ export async function POST(request: NextRequest) {
 
     if (remarks?.trim()) {
       insertData.remarks = remarks.trim();
+    }
+
+    if (body.payment_method) {
+      insertData.payment_method = body.payment_method;
+    }
+
+    if (body.payment_method === 'bank_transfer' && body.bank_name) {
+      insertData.bank_name = body.bank_name;
     }
 
     // If status is washing and no start_time is provided, set it

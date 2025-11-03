@@ -13,6 +13,33 @@ type QueueStatus = 'waiting' | 'washing' | 'completed' | 'cancelled';
 type ServiceType = 'wash' | 'detailing' | 'wax' | 'interior' | 'full_service';
 type PaymentStatus = 'pending' | 'paid' | 'unpaid';
 
+type PaymentMethod = 'cash' | 'easypaisa' | 'jazzcash' | 'bank_transfer' | null;
+
+// List of Pakistani banks
+const PAKISTANI_BANKS = [
+  'Allied Bank Limited (ABL)',
+  'Askari Bank Limited',
+  'Bank Al Habib Limited',
+  'Bank Alfalah Limited',
+  'Bank of Punjab (BOP)',
+  'Faysal Bank Limited',
+  'First Women Bank Limited',
+  'Habib Bank Limited (HBL)',
+  'JS Bank Limited',
+  'MCB Bank Limited',
+  'Meezan Bank Limited',
+  'National Bank of Pakistan (NBP)',
+  'Soneri Bank Limited',
+  'Standard Chartered Bank Pakistan',
+  'Summit Bank Limited',
+  'The Bank of Khyber',
+  'United Bank Limited (UBL)',
+  'Al Baraka Bank Pakistan Limited',
+  'Dubai Islamic Bank Pakistan Limited',
+  'Bank Islami Pakistan Limited',
+  'Sindh Bank Limited',
+];
+
 interface QueueEntry {
   id: string;
   customer_id: string;
@@ -22,6 +49,8 @@ interface QueueEntry {
   service_type: ServiceType;
   price: number;
   payment_status: PaymentStatus;
+  payment_method?: PaymentMethod;
+  bank_name?: string | null;
   start_time?: string | null;
   end_time?: string | null;
   created_at?: string;
@@ -72,6 +101,8 @@ export default function QueuePage() {
     assigned_worker: '',
     status: 'waiting' as QueueStatus,
     payment_status: 'pending' as PaymentStatus,
+    payment_method: '' as PaymentMethod | '',
+    bank_name: '' as string,
     remarks: '',
   });
   const [modalError, setModalError] = useState<string | null>(null);
@@ -152,12 +183,19 @@ export default function QueuePage() {
       
       const method = editingEntry ? 'PUT' : 'POST';
 
+      // Prepare data for submission
+      const submitData = {
+        ...formData,
+        payment_method: formData.payment_method || null,
+        bank_name: formData.payment_method === 'bank_transfer' ? formData.bank_name || null : null,
+      };
+
       const response = await fetch(url, {
         method,
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(submitData),
       });
 
       if (!response.ok) {
@@ -173,6 +211,8 @@ export default function QueuePage() {
         assigned_worker: '',
         status: 'waiting',
         payment_status: 'pending',
+        payment_method: '',
+        bank_name: '',
         remarks: '',
       });
       setShowModal(false);
@@ -201,6 +241,8 @@ export default function QueuePage() {
       assigned_worker: entry.assigned_worker || '',
       status: entry.status,
       payment_status: entry.payment_status,
+      payment_method: entry.payment_method || '',
+      bank_name: entry.bank_name || '',
       remarks: entry.remarks || '',
     });
     setShowModal(true);
@@ -217,6 +259,8 @@ export default function QueuePage() {
       assigned_worker: '',
       status: 'waiting',
       payment_status: 'pending',
+      payment_method: '',
+      bank_name: '',
       remarks: '',
     });
     setShowModal(true);
@@ -259,6 +303,8 @@ export default function QueuePage() {
       assigned_worker: '',
       status: 'waiting',
       payment_status: 'pending',
+      payment_method: '',
+      bank_name: '',
       remarks: '',
     });
     setModalError(null);
@@ -549,6 +595,62 @@ export default function QueuePage() {
                         </select>
                       </div>
 
+                      {/* Payment Method */}
+                      <div className="space-y-2">
+                        <Label htmlFor="payment_method">
+                          <DollarSign className="inline h-3 w-3 mr-1" />
+                          Payment Method
+                        </Label>
+                        <select
+                          id="payment_method"
+                          value={formData.payment_method || ''}
+                          onChange={(e) => {
+                            const newMethod = e.target.value as PaymentMethod || '';
+                            setFormData({ 
+                              ...formData, 
+                              payment_method: newMethod,
+                              bank_name: newMethod !== 'bank_transfer' ? '' : formData.bank_name
+                            });
+                            setModalError(null);
+                          }}
+                          disabled={isSubmitting}
+                          className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          <option value="">Not Selected</option>
+                          <option value="cash">Cash</option>
+                          <option value="easypaisa">Easypaisa</option>
+                          <option value="jazzcash">Jazzcash</option>
+                          <option value="bank_transfer">Bank Transfer</option>
+                        </select>
+                      </div>
+
+                      {/* Bank Name - shown only when bank_transfer is selected */}
+                      {formData.payment_method === 'bank_transfer' && (
+                        <div className="space-y-2">
+                          <Label htmlFor="bank_name">
+                            <DollarSign className="inline h-3 w-3 mr-1" />
+                            Bank Name
+                          </Label>
+                          <select
+                            id="bank_name"
+                            value={formData.bank_name}
+                            onChange={(e) => {
+                              setFormData({ ...formData, bank_name: e.target.value });
+                              setModalError(null);
+                            }}
+                            disabled={isSubmitting}
+                            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            <option value="">Select Bank</option>
+                            {PAKISTANI_BANKS.map((bank) => (
+                              <option key={bank} value={bank}>
+                                {bank}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+
                       {/* Remarks */}
                       <div className="space-y-2 md:col-span-2">
                         <Label htmlFor="remarks">
@@ -704,6 +806,21 @@ export default function QueuePage() {
                           {selectedEntry.payment_status.charAt(0).toUpperCase() + selectedEntry.payment_status.slice(1)}
                         </span>
                       </div>
+
+                      {/* Payment Method */}
+                      {selectedEntry.payment_method && (
+                        <div className="space-y-2 p-4 border rounded-lg bg-muted/30">
+                          <Label className="text-sm font-medium text-muted-foreground">Payment Method</Label>
+                          <p className="text-base font-semibold capitalize">
+                            {selectedEntry.payment_method.replace('_', ' ')}
+                          </p>
+                          {selectedEntry.payment_method === 'bank_transfer' && selectedEntry.bank_name && (
+                            <p className="text-sm text-muted-foreground mt-1">
+                              Bank: {selectedEntry.bank_name}
+                            </p>
+                          )}
+                        </div>
+                      )}
 
                       {/* Status */}
                       <div className="space-y-2 p-4 border rounded-lg bg-muted/30">

@@ -46,13 +46,27 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    return NextResponse.json({ queue: queueEntries || [] });
+    const response = NextResponse.json({ queue: queueEntries || [] });
+    
+    // Prevent caching to ensure real-time updates
+    response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    response.headers.set('Pragma', 'no-cache');
+    response.headers.set('Expires', '0');
+    
+    return response;
   } catch (error) {
     console.error('Error fetching public queue:', error);
-    return NextResponse.json(
+    const response = NextResponse.json(
       { queue: [], error: 'Failed to fetch queue', details: (error as Error).message },
       { status: 200 } // Return 200 so frontend can handle gracefully
     );
+    
+    // Prevent caching even on errors
+    response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    response.headers.set('Pragma', 'no-cache');
+    response.headers.set('Expires', '0');
+    
+    return response;
   }
 }
 
