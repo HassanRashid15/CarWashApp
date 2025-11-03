@@ -20,7 +20,7 @@ import { Input } from '@/components/ui/input';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { motion } from 'framer-motion';
 import Link from 'next/link';
-import { createClient } from '@/utils/supabase/client';
+import { createClient } from '@/lib/supabase/client';
 import { Eye, EyeOff } from 'lucide-react';
 
 type FormData = z.infer<typeof newPasswordSchema>;

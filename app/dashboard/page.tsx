@@ -7,7 +7,7 @@ import { PlaceholderChart } from '@/components/dashboard/placeholder-chart';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useState, useEffect } from 'react';
-import { createClient } from '@/utils/supabase/client';
+import { createClient } from '@/lib/supabase/client';
 import { User } from '@supabase/supabase-js';
 
 export default function DashboardPage() {

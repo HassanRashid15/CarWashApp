@@ -23,3 +23,4 @@ DROP POLICY IF EXISTS "Public can read worker names for queue" ON "Workers";
 CREATE POLICY "Public can read worker names for queue" ON "Workers"
   FOR SELECT USING (true); -- Allow reading all worker names (public queue display)
 
+

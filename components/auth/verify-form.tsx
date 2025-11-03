@@ -7,7 +7,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { verifyOtpSchema } from '@/lib/utils/validation';
 import { verifyOtp, markProfileVerified, logout } from '@/lib/utils/auth-helpers';
-import { createClient } from '@/utils/supabase/client';
+import { createClient } from '@/lib/supabase/client';
 import { Button } from '@/components/ui/button';
 import {
   Form,

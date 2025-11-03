@@ -1,4 +1,4 @@
-import { createAdminClient } from '@/utils/supabase/server';
+import { createAdminClient } from '@/lib/supabase/server';
 import { generateScreenCode } from '@/lib/utils/admin-helpers';
 import { NextRequest, NextResponse } from 'next/server';
 
