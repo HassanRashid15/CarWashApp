@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Sparkles, Car, Shield, Clock, Star, User, ShieldCheck, Loader2, Droplet, Sparkles as SparklesIcon, CheckCircle2, MapPin, Phone, Mail, Calendar, Award, Zap, Users, ListOrdered, RefreshCw } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { createClient } from '@/lib/supabase/client';
 
 interface HomePageClientProps {
   initialRole: string | null;
@@ -40,6 +41,8 @@ export function HomePageClient({ initialRole }: HomePageClientProps) {
   const [isValidatingCode, setIsValidatingCode] = useState(false);
   const [queueEntries, setQueueEntries] = useState<QueueEntry[]>([]);
   const [isInitialLoading, setIsInitialLoading] = useState(true);
+  const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(false);
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const isInitialLoadRef = useRef(true); // Track if this is the first load
 
@@ -48,6 +51,40 @@ export function HomePageClient({ initialRole }: HomePageClientProps) {
     if (selectedRole) {
       document.cookie = `userRole=${selectedRole}; path=/; max-age=31536000`; // 1 year
     }
+  }, [selectedRole]);
+
+  // Check authentication status for admin
+  useEffect(() => {
+    const checkAuth = async () => {
+      if (selectedRole === 'admin') {
+        try {
+          const supabase = createClient();
+          const { data: { session } } = await supabase.auth.getSession();
+          setIsAdminLoggedIn(!!session?.user);
+        } catch (error) {
+          console.error('Error checking auth:', error);
+          setIsAdminLoggedIn(false);
+        } finally {
+          setIsCheckingAuth(false);
+        }
+      } else {
+        setIsCheckingAuth(false);
+      }
+    };
+
+    checkAuth();
+
+    // Listen for auth state changes
+    const supabase = createClient();
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (selectedRole === 'admin') {
+        setIsAdminLoggedIn(!!session?.user);
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
   }, [selectedRole]);
 
   const queueEntriesRef = useRef<QueueEntry[]>([]); // Use ref to avoid dependency issues
@@ -469,23 +506,40 @@ export function HomePageClient({ initialRole }: HomePageClientProps) {
                 </Button>
               </motion.div>
             ) : selectedRole === 'admin' ? (
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
+              !isCheckingAuth && (
+                isAdminLoggedIn ? (
+                  <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.3 }}
                     className="flex flex-col sm:flex-row items-center gap-4"
-              >
-                <Link href="/auth/signup?role=admin">
+                  >
+                    <Link href="/dashboard">
                       <Button size="lg" className="text-base px-8 py-6 text-lg w-full sm:w-auto">
-                    Get Started
-                  </Button>
-                </Link>
-                <Link href="/auth/login?role=admin">
+                        Go to Dashboard
+                      </Button>
+                    </Link>
+                  </motion.div>
+                ) : (
+                  <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.3 }}
+                    className="flex flex-col sm:flex-row items-center gap-4"
+                  >
+                    <Link href="/auth/signup?role=admin">
+                      <Button size="lg" className="text-base px-8 py-6 text-lg w-full sm:w-auto">
+                        Get Started
+                      </Button>
+                    </Link>
+                    <Link href="/auth/login?role=admin">
                       <Button variant="outline" size="lg" className="text-base px-8 py-6 text-lg w-full sm:w-auto">
-                    Sign In
-                  </Button>
-                </Link>
-              </motion.div>
+                        Sign In
+                      </Button>
+                    </Link>
+                  </motion.div>
+                )
+              )
             ) : null}
               </motion.div>
               
@@ -647,109 +701,234 @@ export function HomePageClient({ initialRole }: HomePageClientProps) {
         </div>
       </section>
 
-      {/* Services Preview Section */}
+      {/* Services Preview Section / Subscription Cards for Admin */}
       <section id="services" className="py-24 bg-background relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-r from-blue-500/5 via-transparent to-cyan-500/5"></div>
         <div className="container mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            transition={{ duration: 0.6 }}
-            className="text-center mb-16"
-          >
-            <h2 className="text-4xl sm:text-5xl font-extrabold mb-4">
-              Our <span className="bg-gradient-to-r from-blue-600 to-cyan-500 bg-clip-text text-transparent">Services</span>
-            </h2>
-            <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
-              Comprehensive car care solutions tailored to your needs and budget
-            </p>
-          </motion.div>
-          
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-12">
-            {[
-              {
-                name: 'Basic Wash',
-                price: '$15',
-                features: ['Exterior wash & dry', 'Tire cleaning', 'Window cleaning', 'Quick vacuum'],
-                popular: false,
-                gradient: 'from-gray-500 to-gray-600'
-              },
-              {
-                name: 'Premium Wash',
-                price: '$35',
-                features: ['Full exterior wash', 'Interior vacuum', 'Dashboard cleaning', 'Tire shine', 'Door jamb clean'],
-                popular: true,
-                gradient: 'from-blue-500 to-cyan-500'
-              },
-              {
-                name: 'Full Detail',
-                price: '$75',
-                features: ['Complete interior detail', 'Exterior wax & polish', 'Engine bay clean', 'Leather conditioning', 'Carpet shampoo'],
-                popular: false,
-                gradient: 'from-purple-500 to-pink-500'
-              }
-            ].map((service, index) => (
+          {selectedRole === 'admin' ? (
+            <>
               <motion.div
-                key={service.name}
-                initial={{ opacity: 0, y: 30 }}
+                initial={{ opacity: 0, y: 20 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
-                transition={{ duration: 0.5, delay: index * 0.1 }}
-                whileHover={{ y: -8, scale: 1.02 }}
-                className={`relative p-8 rounded-2xl border-2 ${
-                  service.popular 
-                    ? 'border-primary shadow-2xl bg-gradient-to-br from-blue-50 to-cyan-50 dark:from-blue-950/20 dark:to-cyan-950/20' 
-                    : 'border-border bg-card hover:border-primary/50'
-                } transition-all duration-300`}
+                transition={{ duration: 0.6 }}
+                className="text-center mb-16"
               >
-                {service.popular && (
-                  <div className="absolute -top-4 left-1/2 -translate-x-1/2">
-                    <span className="bg-gradient-to-r from-blue-600 to-cyan-500 text-white text-xs font-bold px-4 py-1 rounded-full">
-                      MOST POPULAR
-                    </span>
-            </div>
-                )}
-                <div className={`inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br ${service.gradient} mb-6`}>
-                  <Car className="h-8 w-8 text-white" />
-            </div>
-                <h3 className="font-bold text-2xl mb-2">{service.name}</h3>
-                <div className="mb-6">
-                  <span className="text-4xl font-extrabold bg-gradient-to-r from-blue-600 to-cyan-500 bg-clip-text text-transparent">
-                    {service.price}
-                  </span>
-            </div>
-                <ul className="space-y-3 mb-8">
-                  {service.features.map((feature, idx) => (
-                    <li key={idx} className="flex items-start">
-                      <CheckCircle2 className="h-5 w-5 text-green-500 mr-3 mt-0.5 flex-shrink-0" />
-                      <span className="text-muted-foreground">{feature}</span>
-                    </li>
-                  ))}
-                </ul>
-                <Button 
-                  className={`w-full ${service.popular ? '' : 'variant-outline'}`}
-                  variant={service.popular ? 'default' : 'outline'}
-                >
-                  Select Service
-                </Button>
+                <h2 className="text-4xl sm:text-5xl font-extrabold mb-4">
+                  Choose Your <span className="bg-gradient-to-r from-blue-600 to-cyan-500 bg-clip-text text-transparent">Subscription</span>
+                </h2>
+                <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
+                  Select the perfect plan to manage your car wash business efficiently
+                </p>
               </motion.div>
-            ))}
-          </div>
-          
-          <motion.div
-            initial={{ opacity: 0 }}
-            whileInView={{ opacity: 1 }}
-            viewport={{ once: true }}
-            transition={{ delay: 0.4 }}
-            className="text-center"
-          >
-            <Link href="/services">
-              <Button variant="outline" size="lg" className="text-base px-8">
-                View All Services
-              </Button>
-            </Link>
-          </motion.div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-12">
+                {[
+                  {
+                    name: 'Starter',
+                    price: '$29',
+                    period: '/month',
+                    features: [
+                      'Up to 50 customers',
+                      'Basic queue management',
+                      'Worker management',
+                      'Email support',
+                      'Basic reports'
+                    ],
+                    popular: false,
+                    gradient: 'from-gray-500 to-gray-600',
+                    icon: Shield
+                  },
+                  {
+                    name: 'Professional',
+                    price: '$79',
+                    period: '/month',
+                    features: [
+                      'Unlimited customers',
+                      'Advanced queue system',
+                      'Full worker management',
+                      'Inventory tracking',
+                      'Payment processing',
+                      'Priority support',
+                      'Advanced analytics'
+                    ],
+                    popular: true,
+                    gradient: 'from-blue-500 to-cyan-500',
+                    icon: Zap
+                  },
+                  {
+                    name: 'Enterprise',
+                    price: '$199',
+                    period: '/month',
+                    features: [
+                      'Everything in Professional',
+                      'Multi-location support',
+                      'Custom integrations',
+                      'Dedicated account manager',
+                      '24/7 phone support',
+                      'Custom reporting',
+                      'API access',
+                      'White-label options'
+                    ],
+                    popular: false,
+                    gradient: 'from-purple-500 to-pink-500',
+                    icon: Award
+                  }
+                ].map((subscription, index) => {
+                  const IconComponent = subscription.icon;
+                  return (
+                    <motion.div
+                      key={subscription.name}
+                      initial={{ opacity: 0, y: 30 }}
+                      whileInView={{ opacity: 1, y: 0 }}
+                      viewport={{ once: true }}
+                      transition={{ duration: 0.5, delay: index * 0.1 }}
+                      whileHover={{ y: -8, scale: 1.02 }}
+                      className={`relative p-8 rounded-2xl border-2 flex flex-col h-full ${
+                        subscription.popular 
+                          ? 'border-primary shadow-2xl bg-gradient-to-br from-blue-50 to-cyan-50 dark:from-blue-950/20 dark:to-cyan-950/20' 
+                          : 'border-border bg-card hover:border-primary/50'
+                      } transition-all duration-300`}
+                    >
+                      {subscription.popular && (
+                        <div className="absolute -top-4 left-1/2 -translate-x-1/2">
+                          <span className="bg-gradient-to-r from-blue-600 to-cyan-500 text-white text-xs font-bold px-4 py-1 rounded-full">
+                            MOST POPULAR
+                          </span>
+                        </div>
+                      )}
+                      <div className={`inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br ${subscription.gradient} mb-6`}>
+                        <IconComponent className="h-8 w-8 text-white" />
+                      </div>
+                      <h3 className="font-bold text-2xl mb-2">{subscription.name}</h3>
+                      <div className="mb-6 flex items-baseline">
+                        <span className="text-4xl font-extrabold bg-gradient-to-r from-blue-600 to-cyan-500 bg-clip-text text-transparent">
+                          {subscription.price}
+                        </span>
+                        <span className="text-muted-foreground ml-2">{subscription.period}</span>
+                      </div>
+                      <ul className="space-y-3 mb-8 flex-grow">
+                        {subscription.features.map((feature, idx) => (
+                          <li key={idx} className="flex items-start">
+                            <CheckCircle2 className="h-5 w-5 text-green-500 mr-3 mt-0.5 flex-shrink-0" />
+                            <span className="text-muted-foreground">{feature}</span>
+                          </li>
+                        ))}
+                      </ul>
+                      <Button 
+                        className={`w-full mt-auto ${subscription.popular ? '' : 'variant-outline'}`}
+                        variant={subscription.popular ? 'default' : 'outline'}
+                      >
+                        {subscription.popular ? 'Get Started' : 'Choose Plan'}
+                      </Button>
+                    </motion.div>
+                  );
+                })}
+              </div>
+            </>
+          ) : (
+            <>
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.6 }}
+                className="text-center mb-16"
+              >
+                <h2 className="text-4xl sm:text-5xl font-extrabold mb-4">
+                  Our <span className="bg-gradient-to-r from-blue-600 to-cyan-500 bg-clip-text text-transparent">Services</span>
+                </h2>
+                <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
+                  Comprehensive car care solutions tailored to your needs and budget
+                </p>
+              </motion.div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-12">
+                {[
+                  {
+                    name: 'Basic Wash',
+                    price: '$15',
+                    features: ['Exterior wash & dry', 'Tire cleaning', 'Window cleaning', 'Quick vacuum'],
+                    popular: false,
+                    gradient: 'from-gray-500 to-gray-600'
+                  },
+                  {
+                    name: 'Premium Wash',
+                    price: '$35',
+                    features: ['Full exterior wash', 'Interior vacuum', 'Dashboard cleaning', 'Tire shine', 'Door jamb clean'],
+                    popular: true,
+                    gradient: 'from-blue-500 to-cyan-500'
+                  },
+                  {
+                    name: 'Full Detail',
+                    price: '$75',
+                    features: ['Complete interior detail', 'Exterior wax & polish', 'Engine bay clean', 'Leather conditioning', 'Carpet shampoo'],
+                    popular: false,
+                    gradient: 'from-purple-500 to-pink-500'
+                  }
+                ].map((service, index) => (
+                  <motion.div
+                    key={service.name}
+                    initial={{ opacity: 0, y: 30 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    viewport={{ once: true }}
+                    transition={{ duration: 0.5, delay: index * 0.1 }}
+                    whileHover={{ y: -8, scale: 1.02 }}
+                    className={`relative p-8 rounded-2xl border-2 ${
+                      service.popular 
+                        ? 'border-primary shadow-2xl bg-gradient-to-br from-blue-50 to-cyan-50 dark:from-blue-950/20 dark:to-cyan-950/20' 
+                        : 'border-border bg-card hover:border-primary/50'
+                    } transition-all duration-300`}
+                  >
+                    {service.popular && (
+                      <div className="absolute -top-4 left-1/2 -translate-x-1/2">
+                        <span className="bg-gradient-to-r from-blue-600 to-cyan-500 text-white text-xs font-bold px-4 py-1 rounded-full">
+                          MOST POPULAR
+                        </span>
+                      </div>
+                    )}
+                    <div className={`inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br ${service.gradient} mb-6`}>
+                      <Car className="h-8 w-8 text-white" />
+                    </div>
+                    <h3 className="font-bold text-2xl mb-2">{service.name}</h3>
+                    <div className="mb-6">
+                      <span className="text-4xl font-extrabold bg-gradient-to-r from-blue-600 to-cyan-500 bg-clip-text text-transparent">
+                        {service.price}
+                      </span>
+                    </div>
+                    <ul className="space-y-3 mb-8">
+                      {service.features.map((feature, idx) => (
+                        <li key={idx} className="flex items-start">
+                          <CheckCircle2 className="h-5 w-5 text-green-500 mr-3 mt-0.5 flex-shrink-0" />
+                          <span className="text-muted-foreground">{feature}</span>
+                        </li>
+                      ))}
+                    </ul>
+                    <Button 
+                      className={`w-full ${service.popular ? '' : 'variant-outline'}`}
+                      variant={service.popular ? 'default' : 'outline'}
+                    >
+                      Select Service
+                    </Button>
+                  </motion.div>
+                ))}
+              </div>
+              
+              <motion.div
+                initial={{ opacity: 0 }}
+                whileInView={{ opacity: 1 }}
+                viewport={{ once: true }}
+                transition={{ delay: 0.4 }}
+                className="text-center"
+              >
+                <Link href="/services">
+                  <Button variant="outline" size="lg" className="text-base px-8">
+                    View All Services
+                  </Button>
+                </Link>
+              </motion.div>
+            </>
+          )}
         </div>
       </section>
 

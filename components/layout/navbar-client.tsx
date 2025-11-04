@@ -2,16 +2,32 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { ThemeToggle } from '@/components/theme/theme-toggle';
+import { UserMenu } from '@/components/dashboard/user-menu';
+import { createClient } from '@/lib/supabase/client';
 import { Droplet, MapPin, Calendar } from 'lucide-react';
+import type { User } from '@supabase/supabase-js';
 
 interface NavbarClientProps {
   initialRole: string | null;
 }
 
+interface ProfileData {
+  first_name?: string;
+  last_name?: string;
+  avatar_url?: string;
+  email?: string;
+  role?: string;
+}
+
 export function NavbarClient({ initialRole }: NavbarClientProps) {
   const [selectedRole, setSelectedRole] = useState<string | null>(initialRole);
+  const [user, setUser] = useState<User | null>(null);
+  const [profile, setProfile] = useState<ProfileData | null>(null);
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+  const router = useRouter();
 
   useEffect(() => {
     // Sync with cookie when role changes
@@ -32,8 +48,88 @@ export function NavbarClient({ initialRole }: NavbarClientProps) {
     };
   }, [selectedRole]);
 
-  // SSR rendered buttons based on initial role
+  // Check authentication status for admin
+  useEffect(() => {
+    const checkAuth = async () => {
+      if (selectedRole === 'admin') {
+        try {
+          const supabase = createClient();
+          const { data: { session } } = await supabase.auth.getSession();
+          
+          if (session?.user) {
+            setUser(session.user);
+            
+            // Fetch profile data
+            const { data: profileData } = await supabase
+              .from('profiles')
+              .select('first_name, last_name, avatar_url, email, role')
+              .eq('id', session.user.id)
+              .single();
+
+            if (profileData) {
+              setProfile({
+                first_name: profileData.first_name,
+                last_name: profileData.last_name,
+                avatar_url: profileData.avatar_url,
+                email: profileData.email || session.user.email,
+                role: profileData.role,
+              });
+            } else {
+              setProfile({
+                email: session.user.email,
+              });
+            }
+          }
+        } catch (error) {
+          console.error('Error checking auth:', error);
+        } finally {
+          setIsCheckingAuth(false);
+        }
+      } else {
+        setIsCheckingAuth(false);
+      }
+    };
+
+    checkAuth();
+
+    // Listen for auth state changes
+    const supabase = createClient();
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (selectedRole === 'admin') {
+        if (session?.user) {
+          setUser(session.user);
+          // Fetch profile again
+          checkAuth();
+        } else {
+          setUser(null);
+          setProfile(null);
+        }
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [selectedRole]);
+
+  const handleSignOut = async () => {
+    try {
+      const supabase = createClient();
+      await supabase.auth.signOut();
+      setUser(null);
+      setProfile(null);
+      router.push('/auth/login?role=admin');
+    } catch (error) {
+      console.error('Error signing out:', error);
+    }
+  };
+
+  // Render buttons based on role and auth status
   const renderButtons = () => {
+    if (isCheckingAuth && selectedRole === 'admin') {
+      return null; // Don't show anything while checking
+    }
+
     if (selectedRole === 'user') {
       return (
         <>
@@ -48,6 +144,22 @@ export function NavbarClient({ initialRole }: NavbarClientProps) {
         </>
       );
     } else if (selectedRole === 'admin') {
+      // If admin is logged in, show avatar with dropdown
+      if (user && profile) {
+        return (
+          <UserMenu
+            user={{
+              email: profile.email || user.email,
+              firstName: profile.first_name,
+              lastName: profile.last_name,
+              avatarUrl: profile.avatar_url,
+              role: profile.role,
+            }}
+            onSignOut={handleSignOut}
+          />
+        );
+      }
+      // If admin is not logged in, show login buttons
       return (
         <>
           <Link href="/auth/login?role=admin">
