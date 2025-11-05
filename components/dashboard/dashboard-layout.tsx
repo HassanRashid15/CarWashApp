@@ -200,13 +200,6 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
             onNavigate={handleMobileNavigate}
           />
           <SidebarItem
-            href="/dashboard/profile"
-            icon={<UserIcon className="h-5 w-5" />}
-            label="Profile"
-            isCollapsed={!isSidebarOpen}
-            onNavigate={handleMobileNavigate}
-          />
-          <SidebarItem
             href="/dashboard/settings"
             icon={<SettingsIcon className="h-5 w-5" />}
             label="Settings"
