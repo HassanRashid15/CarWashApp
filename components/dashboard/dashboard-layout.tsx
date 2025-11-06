@@ -163,7 +163,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   }
 
   return (
-    <div className="flex h-screen bg-background relative overflow-hidden">
+    <div className="flex h-screen bg-background relative overflow-hidden min-h-screen">
       {/* Backdrop overlay for mobile and tablet */}
       <AnimatePresence>
         {isSidebarOpen && (
@@ -190,7 +190,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
           stiffness: 300,
           damping: 30,
         }}
-        className={`fixed lg:static inset-y-0 left-0 z-50 lg:z-auto bg-card border-r border-border flex flex-col ${
+        className={`fixed lg:static inset-y-0 left-0 z-50 lg:z-auto h-screen lg:h-full bg-card border-r border-border flex flex-col ${
           isMobile
             ? isSidebarOpen ? 'translate-x-0' : '-translate-x-full'
             : 'translate-x-0'
