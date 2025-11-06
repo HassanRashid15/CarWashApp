@@ -77,7 +77,7 @@ export default function QueuePage() {
           // Data changed - update both state and ref smoothly
           queueEntriesRef.current = queueClone;
           setQueueEntries(queueClone); // This triggers re-render
-        setLastUpdate(new Date());
+          setLastUpdate(new Date());
           console.log('✅ Queue UI updated at', new Date().toLocaleTimeString(), '- Entries:', newQueue.length);
         } else {
           console.log('ℹ️ Queue data unchanged, skipping UI update');
@@ -97,9 +97,13 @@ export default function QueuePage() {
       queueEntriesRef.current = [];
       setQueueEntries([]);
     } finally {
+      // Always reset loading state when it was set
+      if (showLoading || isInitialLoadRef.current) {
+        setIsInitialLoading(false);
+      }
+      // Mark initial load as complete
       if (isInitialLoadRef.current) {
         isInitialLoadRef.current = false;
-        setIsInitialLoading(false);
       }
     }
   }, []); // No dependencies - stable function

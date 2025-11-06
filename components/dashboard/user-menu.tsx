@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { LogOut, ChevronDown } from 'lucide-react';
+import { LogOut } from 'lucide-react';
 
 interface UserMenuProps {
   user: {
@@ -50,16 +50,15 @@ export function UserMenu({ user, onSignOut }: UserMenuProps) {
     <div className="relative user-menu">
       <Button
         variant="ghost"
-        className="flex items-center space-x-2 h-auto p-2 hover:bg-accent"
+        className="flex items-center h-auto p-1 hover:bg-accent rounded-full"
         onClick={() => setIsOpen(!isOpen)}
       >
-        <Avatar className="h-8 w-8">
+        <Avatar className="h-8 w-8 cursor-pointer">
           {user.avatarUrl && <AvatarImage src={user.avatarUrl} alt={user.email || 'User'} />}
           <AvatarFallback className="bg-primary text-primary-foreground">
             {getInitials()}
           </AvatarFallback>
         </Avatar>
-        <ChevronDown className={`h-4 w-4 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
       </Button>
 
       {isOpen && (

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -97,6 +97,17 @@ export function ServicesClient() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitSuccess, setSubmitSuccess] = useState(false);
+
+  // Reset booking form state when modal closes
+  useEffect(() => {
+    if (!isServiceModalOpen) {
+      setBookingConfirmation('');
+      setShowBookingForm(false);
+      setSubmitError(null);
+      setSubmitSuccess(false);
+      setBookingForm({ name: '', contactNo: '', description: '' });
+    }
+  }, [isServiceModalOpen]);
 
   const handleServiceClick = (service: Service) => {
     setSelectedService(service);
@@ -201,7 +212,20 @@ export function ServicesClient() {
       </section>
 
       {/* Service Booking Modal */}
-      <Dialog open={isServiceModalOpen} onOpenChange={setIsServiceModalOpen}>
+      <Dialog 
+        open={isServiceModalOpen} 
+        onOpenChange={(open) => {
+          setIsServiceModalOpen(open);
+          if (!open) {
+            // Reset form state when modal closes
+            setBookingForm({ name: '', contactNo: '', description: '' });
+            setBookingConfirmation('');
+            setShowBookingForm(false);
+            setSubmitError(null);
+            setSubmitSuccess(false);
+          }
+        }}
+      >
         <AnimatePresence>
           {isServiceModalOpen && selectedService && (
             <DialogContent className="sm:max-w-[500px]">
@@ -273,11 +297,19 @@ export function ServicesClient() {
                           </Label>
                           <select
                             id="bookingConfirmation"
-                            value={bookingConfirmation}
+                            value={bookingConfirmation || ''}
                             onChange={(e) => {
-                              setBookingConfirmation(e.target.value);
-                              if (e.target.value === 'yes') {
+                              const selectedValue = e.target.value;
+                              setBookingConfirmation(selectedValue);
+                              
+                              if (selectedValue === 'yes') {
                                 setTimeout(() => setShowBookingForm(true), 300);
+                              } else if (selectedValue === 'no') {
+                                // Auto-close modal when "No" is selected with smooth animation
+                                // Dialog animation duration is 200ms, so we wait a bit for visual feedback
+                                setTimeout(() => {
+                                  setIsServiceModalOpen(false);
+                                }, 200);
                               }
                             }}
                             className="flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
@@ -411,21 +443,6 @@ export function ServicesClient() {
                             Send Request
                           </>
                         )}
-                      </Button>
-                    )}
-                    {bookingConfirmation === 'no' && (
-                      <Button
-                        onClick={() => {
-                          setIsServiceModalOpen(false);
-                          setBookingForm({ name: '', contactNo: '', description: '' });
-                          setBookingConfirmation('');
-                          setShowBookingForm(false);
-                          setSubmitError(null);
-                          setSubmitSuccess(false);
-                        }}
-                        className="flex-1 sm:flex-initial"
-                      >
-                        Close
                       </Button>
                     )}
                   </motion.div>

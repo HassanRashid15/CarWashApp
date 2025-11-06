@@ -2,9 +2,6 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   /* config options here */
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
   images: {
     remotePatterns: [
       {
@@ -14,6 +11,10 @@ const nextConfig: NextConfig = {
         pathname: '/**',
       },
     ],
+  },
+  // Turbopack configuration (Next.js 16+)
+  turbopack: {
+    // Empty config to silence the warning - Turbopack works fine with default settings
   },
 };
 

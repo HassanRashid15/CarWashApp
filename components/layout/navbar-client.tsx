@@ -6,8 +6,9 @@ import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { ThemeToggle } from '@/components/theme/theme-toggle';
 import { UserMenu } from '@/components/dashboard/user-menu';
+import { Sheet, SheetContent, SheetTrigger, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { createClient } from '@/lib/supabase/client';
-import { Droplet, MapPin, Calendar } from 'lucide-react';
+import { Droplet, MapPin, Calendar, Menu, LogIn, UserPlus } from 'lucide-react';
 import type { User } from '@supabase/supabase-js';
 
 interface NavbarClientProps {
@@ -27,6 +28,7 @@ export function NavbarClient({ initialRole }: NavbarClientProps) {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
@@ -125,7 +127,7 @@ export function NavbarClient({ initialRole }: NavbarClientProps) {
   };
 
   // Render buttons based on role and auth status
-  const renderButtons = () => {
+  const renderButtons = (isMobile = false) => {
     if (isCheckingAuth && selectedRole === 'admin') {
       return null; // Don't show anything while checking
     }
@@ -133,13 +135,15 @@ export function NavbarClient({ initialRole }: NavbarClientProps) {
     if (selectedRole === 'user') {
       return (
         <>
-          <Button variant="ghost" size="sm" className="flex items-center gap-2">
+          <Button variant="ghost" size={isMobile ? "default" : "sm"} className="flex items-center gap-2 w-full sm:w-auto">
             <MapPin className="h-4 w-4" />
-            Location
+            {isMobile && <span>Location</span>}
+            {!isMobile && <span className="hidden sm:inline">Location</span>}
           </Button>
-          <Button size="sm" className="flex items-center gap-2">
+          <Button size={isMobile ? "default" : "sm"} className="flex items-center gap-2 w-full sm:w-auto">
             <Calendar className="h-4 w-4" />
-            Book Now
+            {isMobile && <span>Book Now</span>}
+            {!isMobile && <span className="hidden sm:inline">Book Now</span>}
           </Button>
         </>
       );
@@ -159,16 +163,20 @@ export function NavbarClient({ initialRole }: NavbarClientProps) {
           />
         );
       }
-      // If admin is not logged in, show login buttons
+      // If admin is not logged in, show icon buttons
       return (
         <>
           <Link href="/auth/login?role=admin">
-            <Button variant="ghost" size="sm">
-              Login
+            <Button variant="ghost" size={isMobile ? "default" : "sm"} className={isMobile ? "w-full justify-start" : "p-2"} title="Login">
+              <LogIn className="h-4 w-4" />
+              {isMobile && <span className="ml-2">Login</span>}
             </Button>
           </Link>
           <Link href="/auth/signup?role=admin">
-            <Button size="sm">Get Started</Button>
+            <Button size={isMobile ? "default" : "sm"} className={isMobile ? "w-full justify-start" : "p-2"} title="Get Started">
+              <UserPlus className="h-4 w-4" />
+              {isMobile && <span className="ml-2">Get Started</span>}
+            </Button>
           </Link>
         </>
       );
@@ -176,64 +184,178 @@ export function NavbarClient({ initialRole }: NavbarClientProps) {
       return (
         <>
           <Link href="/auth/login">
-            <Button variant="ghost" size="sm">
-              Login
+            <Button variant="ghost" size={isMobile ? "default" : "sm"} className={isMobile ? "w-full justify-start" : ""}>
+              <LogIn className="h-4 w-4 sm:mr-2" />
+              {isMobile ? <span className="ml-2">Login</span> : <span className="hidden sm:inline">Login</span>}
             </Button>
           </Link>
           <Link href="/auth/signup">
-            <Button size="sm">Get Started</Button>
+            <Button size={isMobile ? "default" : "sm"} className={isMobile ? "w-full justify-start" : ""}>
+              <UserPlus className="h-4 w-4 sm:mr-2" />
+              {isMobile ? <span className="ml-2">Get Started</span> : <span className="hidden sm:inline">Get Started</span>}
+            </Button>
           </Link>
         </>
       );
     }
   };
 
+  const navLinks = [
+    { href: '/', label: 'Home' },
+    { href: '#services', label: 'Services' },
+    { href: '#about', label: 'About' },
+    { href: '#contact', label: 'Contact' },
+  ];
+
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-md border-b border-border">
       <div className="container mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
-          {/* Logo */}
-          <Link href="/" className="flex items-center space-x-2">
-            <div className="p-2 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-lg">
-              <Droplet className="h-5 w-5 text-white" />
-            </div>
-            <span className="text-xl font-bold bg-gradient-to-r from-blue-600 to-cyan-500 bg-clip-text text-transparent">
-              AquaVance
-            </span>
-          </Link>
+          {/* Left Side - Mobile Menu & Logo */}
+          <div className="flex items-center space-x-3 flex-shrink-0">
+            {/* Mobile Menu Button - Left Side */}
+            <div className="lg:hidden">
+              <Sheet open={isMobileMenuOpen} onOpenChange={setIsMobileMenuOpen}>
+                <SheetTrigger asChild>
+                  <Button variant="ghost" size="sm" className="p-2">
+                    <Menu className="h-5 w-5" />
+                    <span className="sr-only">Open menu</span>
+                  </Button>
+                </SheetTrigger>
+                <SheetContent side="left" className="w-[300px] sm:w-[400px]">
+                  <SheetTitle className="sr-only">Navigation Menu</SheetTitle>
+                  <SheetDescription className="sr-only">
+                    Main navigation menu with links and actions
+                  </SheetDescription>
+                  <div className="flex flex-col space-y-6 mt-8">
+                    {/* Mobile Navigation Links */}
+                    <div className="flex flex-col space-y-4">
+                      {navLinks.map((link) => (
+                        <Link
+                          key={link.href}
+                          href={link.href}
+                          onClick={() => setIsMobileMenuOpen(false)}
+                          className="text-base font-medium text-foreground/80 hover:text-foreground transition-colors py-2"
+                        >
+                          {link.label}
+                        </Link>
+                      ))}
+                    </div>
 
-          {/* Navigation Links */}
-          <div className="hidden md:flex items-center space-x-6">
-            <Link
-              href="/"
-              className="text-sm font-medium text-foreground/80 hover:text-foreground transition-colors"
-            >
-              Home
-            </Link>
-            <Link
-              href="#services"
-              className="text-sm font-medium text-foreground/80 hover:text-foreground transition-colors"
-            >
-              Services
-            </Link>
-            <Link
-              href="#about"
-              className="text-sm font-medium text-foreground/80 hover:text-foreground transition-colors"
-            >
-              About
-            </Link>
-            <Link
-              href="#contact"
-              className="text-sm font-medium text-foreground/80 hover:text-foreground transition-colors"
-            >
-              Contact
+                    {/* Mobile Action Buttons */}
+                    <div className="flex flex-col space-y-3 pt-4 border-t border-border">
+                      {selectedRole === 'user' && (
+                        <>
+                          <Button variant="ghost" className="w-full justify-start" onClick={() => setIsMobileMenuOpen(false)}>
+                            <MapPin className="h-4 w-4 mr-2" />
+                            Location
+                          </Button>
+                          <Button className="w-full justify-start" onClick={() => setIsMobileMenuOpen(false)}>
+                            <Calendar className="h-4 w-4 mr-2" />
+                            Book Now
+                          </Button>
+                        </>
+                      )}
+                      {selectedRole === 'admin' && !user && (
+                        <>
+                          <Link href="/auth/login?role=admin" className="w-full" onClick={() => setIsMobileMenuOpen(false)}>
+                            <Button variant="ghost" className="w-full justify-start">
+                              <LogIn className="h-4 w-4 mr-2" />
+                              Login
+                            </Button>
+                          </Link>
+                          <Link href="/auth/signup?role=admin" className="w-full" onClick={() => setIsMobileMenuOpen(false)}>
+                            <Button className="w-full justify-start">
+                              <UserPlus className="h-4 w-4 mr-2" />
+                              Get Started
+                            </Button>
+                          </Link>
+                        </>
+                      )}
+                      {!selectedRole && (
+                        <>
+                          <Link href="/auth/login" className="w-full" onClick={() => setIsMobileMenuOpen(false)}>
+                            <Button variant="ghost" className="w-full justify-start">
+                              <LogIn className="h-4 w-4 mr-2" />
+                              Login
+                            </Button>
+                          </Link>
+                          <Link href="/auth/signup" className="w-full" onClick={() => setIsMobileMenuOpen(false)}>
+                            <Button className="w-full justify-start">
+                              <UserPlus className="h-4 w-4 mr-2" />
+                              Get Started
+                            </Button>
+                          </Link>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </SheetContent>
+              </Sheet>
+            </div>
+
+            {/* Logo */}
+            <Link href="/" className="flex items-center space-x-2">
+              <div className="p-2 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-lg">
+                <Droplet className="h-5 w-5 text-white" />
+              </div>
+              <span className="text-lg sm:text-xl font-bold bg-gradient-to-r from-blue-600 to-cyan-500 bg-clip-text text-transparent">
+                AquaVance
+              </span>
             </Link>
           </div>
 
-          {/* Right Side Actions - SSR rendered based on role */}
-          <div className="flex items-center space-x-4">
+          {/* Desktop Navigation Links */}
+          <div className="hidden lg:flex items-center space-x-6 flex-1 justify-center">
+            {navLinks.map((link) => (
+              <Link
+                key={link.href}
+                href={link.href}
+                className="text-sm font-medium text-foreground/80 hover:text-foreground transition-colors"
+              >
+                {link.label}
+              </Link>
+            ))}
+          </div>
+
+          {/* Right Side Actions - Desktop */}
+          <div className="hidden lg:flex items-center space-x-2 sm:space-x-4 flex-shrink-0">
             <ThemeToggle />
-            {renderButtons()}
+            {renderButtons(false)}
+          </div>
+
+          {/* Right Side Actions - Mobile */}
+          <div className="flex lg:hidden items-center space-x-2 flex-shrink-0">
+            <ThemeToggle />
+            {selectedRole === 'admin' && user && profile ? (
+              <UserMenu
+                user={{
+                  email: profile.email || user.email,
+                  firstName: profile.first_name,
+                  lastName: profile.last_name,
+                  avatarUrl: profile.avatar_url,
+                  role: profile.role,
+                }}
+                onSignOut={handleSignOut}
+              />
+            ) : (
+              <div className="flex items-center space-x-1">
+                {selectedRole === 'admin' && !user && (
+                  <>
+                    <Link href="/auth/login?role=admin">
+                      <Button variant="ghost" size="sm" className="p-2" title="Login">
+                        <LogIn className="h-4 w-4" />
+                      </Button>
+                    </Link>
+                    <Link href="/auth/signup?role=admin">
+                      <Button size="sm" className="p-2" title="Get Started">
+                        <UserPlus className="h-4 w-4" />
+                      </Button>
+                    </Link>
+                  </>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>

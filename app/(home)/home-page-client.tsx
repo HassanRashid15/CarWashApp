@@ -62,6 +62,17 @@ export function HomePageClient({ initialRole }: HomePageClientProps) {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitSuccess, setSubmitSuccess] = useState(false);
 
+  // Reset booking form state when modal closes
+  useEffect(() => {
+    if (!isServiceModalOpen) {
+      setBookingConfirmation('');
+      setShowBookingForm(false);
+      setSubmitError(null);
+      setSubmitSuccess(false);
+      setBookingForm({ name: '', contactNo: '', description: '' });
+    }
+  }, [isServiceModalOpen]);
+
   useEffect(() => {
     // Sync with cookie when role changes
     if (selectedRole) {
@@ -161,9 +172,13 @@ export function HomePageClient({ initialRole }: HomePageClientProps) {
       queueEntriesRef.current = [];
       setQueueEntries([]);
     } finally {
+      // Always reset loading state when it was set
+      if (showLoading || isInitialLoadRef.current) {
+        setIsInitialLoading(false);
+      }
+      // Mark initial load as complete
       if (isInitialLoadRef.current) {
         isInitialLoadRef.current = false;
-        setIsInitialLoading(false);
       }
     }
   }, []); // No dependencies - stable function
@@ -1353,7 +1368,20 @@ export function HomePageClient({ initialRole }: HomePageClientProps) {
       </section>
 
       {/* Service Booking Modal */}
-      <Dialog open={isServiceModalOpen} onOpenChange={setIsServiceModalOpen}>
+      <Dialog 
+        open={isServiceModalOpen} 
+        onOpenChange={(open) => {
+          setIsServiceModalOpen(open);
+          if (!open) {
+            // Reset form state when modal closes
+            setBookingForm({ name: '', contactNo: '', description: '' });
+            setBookingConfirmation('');
+            setShowBookingForm(false);
+            setSubmitError(null);
+            setSubmitSuccess(false);
+          }
+        }}
+      >
         <AnimatePresence>
           {isServiceModalOpen && selectedService && (
             <DialogContent className="sm:max-w-[500px]">
@@ -1431,11 +1459,19 @@ export function HomePageClient({ initialRole }: HomePageClientProps) {
                           </Label>
                           <select
                             id="bookingConfirmation"
-                            value={bookingConfirmation}
+                            value={bookingConfirmation || ''}
                             onChange={(e) => {
-                              setBookingConfirmation(e.target.value);
-                              if (e.target.value === 'yes') {
+                              const selectedValue = e.target.value;
+                              setBookingConfirmation(selectedValue);
+                              
+                              if (selectedValue === 'yes') {
                                 setTimeout(() => setShowBookingForm(true), 300);
+                              } else if (selectedValue === 'no') {
+                                // Auto-close modal when "No" is selected with smooth animation
+                                // Dialog animation duration is 200ms, so we wait a bit for visual feedback
+                                setTimeout(() => {
+                                  setIsServiceModalOpen(false);
+                                }, 200);
                               }
                             }}
                             className="flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
