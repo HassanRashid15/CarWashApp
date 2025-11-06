@@ -1246,7 +1246,7 @@ export function HomePageClient({ initialRole }: HomePageClientProps) {
             >
               <div className="relative w-full h-[400px] bg-gradient-to-br from-blue-500/20 to-cyan-500/20 rounded-3xl backdrop-blur-sm border border-blue-200/50 dark:border-blue-800/50 overflow-hidden">
                 <div className="absolute inset-0 flex items-center justify-center">
-                  <div className="grid grid-cols-2 gap-4 p-8">
+                  <div className="grid grid-cols-2 gap-4 p-8 w-full">
                     <div className="p-6 bg-white/80 dark:bg-gray-800/80 rounded-xl backdrop-blur-sm">
                       <Droplet className="h-10 w-10 text-blue-500 mx-auto mb-2" />
                       <div className="text-center text-sm font-semibold">Eco-Friendly</div>

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { sendEmailWithBrevo } from '@/lib/email/brevo';
+import { shouldSendEmailNotification } from '@/lib/utils/email-helpers';
+import { sendServiceBookingNotificationEmail } from '@/lib/emails/notification-emails';
 
 export async function POST(request: NextRequest) {
   try {
@@ -18,7 +20,7 @@ export async function POST(request: NextRequest) {
     const supabase = createAdminClient();
     const { data: adminProfiles, error: adminError } = await supabase
       .from('profiles')
-      .select('email, first_name, last_name')
+      .select('id, email, first_name, last_name')
       .eq('role', 'admin')
       .limit(1);
 
@@ -42,20 +44,49 @@ export async function POST(request: NextRequest) {
       // Continue with email even if database save fails
     }
 
-    // Send email notification
+    // Send email notification (check preferences first)
     if (adminError || !adminProfiles || adminProfiles.length === 0) {
       console.error('Error fetching admin email:', adminError);
       const adminEmail = process.env.ADMIN_EMAIL || 'hassanrashid0018@gmail.com';
+      
+      // For fallback email, send without checking preferences (backward compatibility)
       await sendServiceBookingEmail(adminEmail, serviceName, servicePrice, serviceFeatures || [], customerName, contactNo, description);
     } else {
-      const adminEmail = adminProfiles[0].email;
+      const adminProfile = adminProfiles[0];
+      const adminEmail = adminProfile.email;
+      const adminId = adminProfile.id;
+      
       if (!adminEmail) {
         return NextResponse.json(
           { error: 'Admin email not found' },
           { status: 500 }
         );
       }
-      await sendServiceBookingEmail(adminEmail, serviceName, servicePrice, serviceFeatures || [], customerName, contactNo, description);
+
+      // Check if admin has email notifications enabled and send notification
+      if (adminId) {
+        // Use the new notification email function that checks preferences
+        const notificationResult = await sendServiceBookingNotificationEmail(
+          adminId,
+          adminEmail,
+          {
+            serviceName,
+            servicePrice,
+            serviceFeatures: serviceFeatures || [],
+            customerName,
+            contactNo,
+            description,
+          }
+        );
+
+        // If notification email failed or was disabled, fall back to old method for backward compatibility
+        if (!notificationResult.sent && notificationResult.reason !== 'Email notifications disabled') {
+          await sendServiceBookingEmail(adminEmail, serviceName, servicePrice, serviceFeatures || [], customerName, contactNo, description);
+        }
+      } else {
+        // If no user ID, send email anyway (backward compatibility)
+        await sendServiceBookingEmail(adminEmail, serviceName, servicePrice, serviceFeatures || [], customerName, contactNo, description);
+      }
     }
 
     return NextResponse.json({

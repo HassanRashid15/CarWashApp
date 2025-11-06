@@ -1,5 +1,6 @@
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
+import { sendQueueNotificationEmail } from '@/lib/emails/notification-emails';
 
 export async function GET(request: NextRequest) {
   try {
@@ -218,6 +219,53 @@ export async function POST(request: NextRequest) {
       }
 
       throw error;
+    }
+
+    // Send email notification for new queue entry
+    if (queueEntry && session.user) {
+      try {
+        const adminSupabase = createAdminClient();
+        const { data: adminProfile } = await adminSupabase
+          .from('profiles')
+          .select('id, email')
+          .eq('id', session.user.id)
+          .single();
+
+        if (adminProfile?.email && adminProfile?.id) {
+          const customerName = (queueEntry.customer as any)?.name || 'Unknown Customer';
+          await sendQueueNotificationEmail(
+            adminProfile.id,
+            adminProfile.email,
+            'new_entry',
+            {
+              queueNumber: queueEntry.queue_number,
+              customerName,
+              serviceType: queueEntry.service_type,
+              price: queueEntry.price,
+              status: queueEntry.status,
+            }
+          );
+
+          // If worker is assigned, send worker assignment notification
+          if (queueEntry.assigned_worker && (queueEntry.worker as any)?.name) {
+            await sendQueueNotificationEmail(
+              adminProfile.id,
+              adminProfile.email,
+              'worker_assigned',
+              {
+                queueNumber: queueEntry.queue_number,
+                customerName,
+                serviceType: queueEntry.service_type,
+                price: queueEntry.price,
+                workerName: (queueEntry.worker as any).name,
+              }
+            );
+          }
+        }
+      } catch (emailError) {
+        console.error('Error sending queue notification email:', emailError);
+        // Don't fail the request if email fails
+      }
     }
 
     return NextResponse.json({ queueEntry }, { status: 201 });

@@ -1,5 +1,6 @@
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
+import { sendQueueNotificationEmail, sendPaymentNotificationEmail } from '@/lib/emails/notification-emails';
 
 export async function PUT(
   request: NextRequest,
@@ -166,6 +167,90 @@ export async function PUT(
         );
       }
       throw error;
+    }
+
+    // Send email notifications for status changes, worker assignments, and payments
+    if (queueEntry && session.user) {
+      try {
+        const adminSupabase = createAdminClient();
+        const { data: adminProfile } = await adminSupabase
+          .from('profiles')
+          .select('id, email')
+          .eq('id', session.user.id)
+          .single();
+
+        if (adminProfile?.email && adminProfile?.id) {
+          const customerName = (queueEntry.customer as any)?.name || 'Unknown Customer';
+
+          // Check for status change
+          if (status && status !== existingEntry.status) {
+            await sendQueueNotificationEmail(
+              adminProfile.id,
+              adminProfile.email,
+              'status_change',
+              {
+                queueNumber: queueEntry.queue_number,
+                customerName,
+                serviceType: queueEntry.service_type,
+                price: queueEntry.price,
+                status: queueEntry.status,
+                oldStatus: existingEntry.status,
+              }
+            );
+          }
+
+          // Check for worker assignment
+          if (assigned_worker !== undefined && assigned_worker !== existingEntry.assigned_worker && assigned_worker) {
+            const workerName = (queueEntry.worker as any)?.name || 'Unknown Worker';
+            await sendQueueNotificationEmail(
+              adminProfile.id,
+              adminProfile.email,
+              'worker_assigned',
+              {
+                queueNumber: queueEntry.queue_number,
+                customerName,
+                serviceType: queueEntry.service_type,
+                price: queueEntry.price,
+                workerName,
+              }
+            );
+          }
+
+          // Check for payment status change
+          if (payment_status && payment_status !== existingEntry.payment_status) {
+            if (payment_status === 'paid') {
+              await sendPaymentNotificationEmail(
+                adminProfile.id,
+                adminProfile.email,
+                'payment_received',
+                {
+                  queueNumber: queueEntry.queue_number,
+                  customerName,
+                  amount: queueEntry.price,
+                  paymentMethod: queueEntry.payment_method || 'cash',
+                  bankName: queueEntry.bank_name || undefined,
+                }
+              );
+            } else if (payment_status === 'pending' || payment_status === 'unpaid') {
+              await sendPaymentNotificationEmail(
+                adminProfile.id,
+                adminProfile.email,
+                'payment_pending',
+                {
+                  queueNumber: queueEntry.queue_number,
+                  customerName,
+                  amount: queueEntry.price,
+                  paymentMethod: queueEntry.payment_method || 'cash',
+                  bankName: queueEntry.bank_name || undefined,
+                }
+              );
+            }
+          }
+        }
+      } catch (emailError) {
+        console.error('Error sending notification emails:', emailError);
+        // Don't fail the request if email fails
+      }
     }
 
     return NextResponse.json({ queueEntry });

@@ -15,7 +15,9 @@ import { createClient } from '@/lib/supabase/client';
 import { User } from '@supabase/supabase-js';
 import { motion } from 'framer-motion';
 import { PlaceholderChart } from '@/components/dashboard/placeholder-chart';
-import { X, Pencil, Loader2, Check, XCircle } from 'lucide-react';
+import { X, Pencil, Loader2, Check, XCircle, Shield, Trash2, AlertTriangle, Monitor, Sun, Moon } from 'lucide-react';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { useTheme } from 'next-themes';
 
 interface ProfileData {
   first_name?: string;
@@ -48,11 +50,84 @@ export default function SettingsPage() {
   const [originalImageUrl, setOriginalImageUrl] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Email notification preferences state
+  const [preferences, setPreferences] = useState({
+    email_notifications_enabled: true,
+    security_alerts_enabled: true,
+    marketing_emails_enabled: false,
+    queue_notifications: true,
+    payment_notifications: true,
+    worker_assignments: true,
+    theme_preference: 'system',
+    animations_enabled: true,
+  });
+  const [preferencesLoading, setPreferencesLoading] = useState(true);
+  const [preferencesSaving, setPreferencesSaving] = useState(false);
+
+  // 2FA state
+  const [twoFactorEnabled, setTwoFactorEnabled] = useState(false);
+  const [show2FAModal, setShow2FAModal] = useState(false);
+  const [show2FASetup, setShow2FASetup] = useState(false);
+  const [show2FAConfirmModal, setShow2FAConfirmModal] = useState(false);
+  const [pending2FAState, setPending2FAState] = useState<boolean | null>(null);
+  const [qrCodeUrl, setQrCodeUrl] = useState<string>('');
+  const [twoFactorSecret, setTwoFactorSecret] = useState<string>('');
+  const [verificationCode, setVerificationCode] = useState('');
+  const [backupCodes, setBackupCodes] = useState<string[]>([]);
+  const [showBackupCodes, setShowBackupCodes] = useState(false);
+  const [is2FALoading, setIs2FALoading] = useState(false);
+
+  // Delete account state
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deletePassword, setDeletePassword] = useState('');
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  // Activity log state
+  const [showActivityLogModal, setShowActivityLogModal] = useState(false);
+  const [activityLogs, setActivityLogs] = useState<any[]>([]);
+  const [isLoadingLogs, setIsLoadingLogs] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+
+  // Theme and appearance state
+  const { theme, setTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
+  const [animationsEnabled, setAnimationsEnabled] = useState(true);
+  const [isSavingAppearance, setIsSavingAppearance] = useState(false);
+
   // Update active tab when URL query parameter changes
   useEffect(() => {
     const tab = searchParams.get('tab') || 'profile';
     setActiveTab(tab);
   }, [searchParams]);
+
+  // Handle theme mounting
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  // Load appearance preferences
+  useEffect(() => {
+    if (mounted && preferences) {
+      // Load theme preference
+      if (preferences.theme_preference && ['light', 'dark', 'system'].includes(preferences.theme_preference)) {
+        setTheme(preferences.theme_preference as 'light' | 'dark' | 'system');
+      }
+      
+      // Load animations preference
+      if (preferences.animations_enabled !== undefined) {
+        setAnimationsEnabled(preferences.animations_enabled);
+        localStorage.setItem('animationsEnabled', preferences.animations_enabled.toString());
+      } else {
+        // Fallback to localStorage
+        const savedAnimations = localStorage.getItem('animationsEnabled');
+        if (savedAnimations !== null) {
+          setAnimationsEnabled(savedAnimations === 'true');
+        }
+      }
+    }
+  }, [mounted, preferences, setTheme]);
 
   useEffect(() => {
     async function getUser() {
@@ -90,7 +165,335 @@ export default function SettingsPage() {
     }
 
     getUser();
+    loadPreferences();
+    check2FAStatus();
   }, []);
+
+  const loadPreferences = async () => {
+    try {
+      const response = await fetch('/api/settings/preferences');
+      if (response.ok) {
+        const data = await response.json();
+        setPreferences(data);
+      }
+    } catch (error) {
+      console.error('Error loading preferences:', error);
+    } finally {
+      setPreferencesLoading(false);
+    }
+  };
+
+  const check2FAStatus = async () => {
+    try {
+      const supabase = createClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('two_factor_enabled')
+          .eq('id', session.user.id)
+          .single();
+        if (profile) {
+          setTwoFactorEnabled(profile.two_factor_enabled || false);
+        }
+      }
+    } catch (error) {
+      console.error('Error checking 2FA status:', error);
+    }
+  };
+
+  const handlePreferenceToggle = async (key: string, value: boolean) => {
+    const updatedPreferences = { ...preferences, [key]: value };
+    setPreferences(updatedPreferences);
+    
+    setPreferencesSaving(true);
+    try {
+      const response = await fetch('/api/settings/preferences', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updatedPreferences),
+      });
+
+      if (!response.ok) {
+        // Revert on error
+        setPreferences(preferences);
+        throw new Error('Failed to save preference');
+      }
+    } catch (error) {
+      console.error('Error saving preference:', error);
+      // Revert on error
+      setPreferences(preferences);
+    } finally {
+      setPreferencesSaving(false);
+    }
+  };
+
+  const handle2FAToggle = (checked: boolean) => {
+    // Only allow enabling from switch (when disabled)
+    if (checked && !twoFactorEnabled) {
+      setPending2FAState(true);
+      setShow2FAConfirmModal(true);
+    }
+  };
+
+  const handleEnabledBadgeClick = () => {
+    // When enabled badge is clicked, open disable confirmation
+    if (twoFactorEnabled) {
+      setPending2FAState(false);
+      setShow2FAConfirmModal(true);
+    }
+  };
+
+  const handle2FAConfirm = async () => {
+    if (pending2FAState === null) return;
+
+    if (pending2FAState) {
+      // Enable 2FA - start setup
+      await handle2FASetup();
+    } else {
+      // Disable 2FA
+      await handle2FADisable();
+    }
+    
+    setShow2FAConfirmModal(false);
+    setPending2FAState(null);
+  };
+
+  const handle2FASetup = async () => {
+    setIs2FALoading(true);
+    try {
+      const response = await fetch('/api/2fa/setup');
+      if (response.ok) {
+        const data = await response.json();
+        setQrCodeUrl(data.qrCodeUrl);
+        setTwoFactorSecret(data.secret);
+        setShow2FASetup(true);
+        setShow2FAConfirmModal(false);
+      } else {
+        const error = await response.json();
+        alert(error.error || 'Failed to setup 2FA');
+        setPending2FAState(null);
+      }
+    } catch (error) {
+      console.error('Error setting up 2FA:', error);
+      alert('Failed to setup 2FA');
+      setPending2FAState(null);
+    } finally {
+      setIs2FALoading(false);
+    }
+  };
+
+  const handle2FAVerify = async () => {
+    if (!verificationCode || verificationCode.length !== 6) {
+      alert('Please enter a valid 6-digit code');
+      return;
+    }
+
+    setIs2FALoading(true);
+    try {
+      const response = await fetch('/api/2fa/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token: verificationCode,
+          secret: twoFactorSecret,
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setBackupCodes(data.backupCodes);
+        setShowBackupCodes(true);
+        setTwoFactorEnabled(true);
+        setShow2FASetup(false);
+        setVerificationCode('');
+      } else {
+        const error = await response.json();
+        alert(error.error || 'Invalid verification code');
+      }
+    } catch (error) {
+      console.error('Error verifying 2FA:', error);
+      alert('Failed to verify 2FA');
+    } finally {
+      setIs2FALoading(false);
+    }
+  };
+
+  const handle2FADisable = async () => {
+    setIs2FALoading(true);
+    try {
+      const response = await fetch('/api/2fa/disable', {
+        method: 'POST',
+      });
+
+      if (response.ok) {
+        setTwoFactorEnabled(false);
+        setShow2FAModal(false);
+        setShow2FAConfirmModal(false);
+      } else {
+        const error = await response.json();
+        alert(error.error || 'Failed to disable 2FA');
+        setPending2FAState(null);
+      }
+    } catch (error) {
+      console.error('Error disabling 2FA:', error);
+      alert('Failed to disable 2FA');
+      setPending2FAState(null);
+    } finally {
+      setIs2FALoading(false);
+    }
+  };
+
+  const fetchActivityLogs = async () => {
+    setIsLoadingLogs(true);
+    try {
+      const response = await fetch('/api/account/activity');
+      if (response.ok) {
+        const data = await response.json();
+        setActivityLogs(data.logs || []);
+      } else {
+        console.error('Failed to fetch activity logs');
+        setActivityLogs([]);
+      }
+    } catch (error) {
+      console.error('Error fetching activity logs:', error);
+      setActivityLogs([]);
+    } finally {
+      setIsLoadingLogs(false);
+    }
+  };
+
+  const handleExportData = async () => {
+    setIsExporting(true);
+    try {
+      const response = await fetch('/api/account/export-pdf');
+      if (response.ok) {
+        // Get PDF blob
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `account-data-${new Date().toISOString().split('T')[0]}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+      } else {
+        const error = await response.json();
+        alert(error.error || 'Failed to export data');
+      }
+    } catch (error) {
+      console.error('Error exporting data:', error);
+      alert('Failed to export data');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const getActivityTypeLabel = (type: string) => {
+    const labels: Record<string, string> = {
+      login: 'Login',
+      password_change: 'Password Changed',
+      profile_updated: 'Profile Updated',
+      preferences_updated: 'Preferences Updated',
+      queue_entry_created: 'Queue Entry Created',
+      customer_created: 'Customer Added',
+      product_created: 'Product Added',
+      service_booking: 'Service Booking',
+      account_activity: 'Account Activity',
+    };
+    return labels[type] || type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+  };
+
+  const handleThemeChange = async (newTheme: 'light' | 'dark' | 'system') => {
+    setTheme(newTheme);
+    
+    // Save to database if user is logged in
+    if (user) {
+      try {
+        setIsSavingAppearance(true);
+        await fetch('/api/settings/preferences', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            theme_preference: newTheme,
+          }),
+        });
+      } catch (error) {
+        console.error('Error saving theme preference:', error);
+      } finally {
+        setIsSavingAppearance(false);
+      }
+    }
+  };
+
+  const handleAnimationsToggle = async (enabled: boolean) => {
+    setAnimationsEnabled(enabled);
+    localStorage.setItem('animationsEnabled', enabled.toString());
+    
+    // Save to database if user is logged in
+    if (user) {
+      try {
+        setIsSavingAppearance(true);
+        await fetch('/api/settings/preferences', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            animations_enabled: enabled,
+          }),
+        });
+      } catch (error) {
+        console.error('Error saving animations preference:', error);
+      } finally {
+        setIsSavingAppearance(false);
+      }
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    if (deleteConfirmText !== 'DELETE') {
+      setDeleteError('Please type DELETE to confirm');
+      return;
+    }
+
+    if (!deletePassword) {
+      setDeleteError('Please enter your password');
+      return;
+    }
+
+    setIsDeleting(true);
+    setDeleteError(null);
+
+    try {
+      const response = await fetch('/api/account/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          password: deletePassword,
+          confirmText: deleteConfirmText,
+        }),
+      });
+
+      if (response.ok) {
+        // Sign out and redirect
+        const supabase = createClient();
+        await supabase.auth.signOut();
+        window.location.href = '/auth/login';
+      } else {
+        const error = await response.json();
+        setDeleteError(error.error || 'Failed to delete account');
+      }
+    } catch (error) {
+      console.error('Error deleting account:', error);
+      setDeleteError('Failed to delete account');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   const getInitials = () => {
     const first = firstName || profile?.first_name;
@@ -481,7 +884,24 @@ export default function SettingsPage() {
                             Add an extra layer of security to your account
                           </p>
                         </div>
-                        <Button variant="outline">Enable</Button>
+                        <div className="flex items-center gap-3">
+                          {twoFactorEnabled ? (
+                            <div 
+                              className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-green-500/10 border border-green-500/20 cursor-pointer hover:bg-green-500/20 transition-colors"
+                              onClick={handleEnabledBadgeClick}
+                            >
+                              <div className="h-2 w-2 rounded-full bg-green-500"></div>
+                              <span className="text-sm font-medium text-green-600 dark:text-green-400">Enabled</span>
+                            </div>
+                          ) : (
+                            <Switch
+                              id="two-factor-account"
+                              checked={false}
+                              onCheckedChange={handle2FAToggle}
+                              disabled={is2FALoading}
+                            />
+                          )}
+                        </div>
                       </div>
 
                       <Separator />
@@ -493,7 +913,12 @@ export default function SettingsPage() {
                             Receive email notifications about account activity
                           </p>
                         </div>
-                        <Button variant="outline">Configure</Button>
+                        <Button 
+                          variant="outline"
+                          onClick={() => setActiveTab('settings')}
+                        >
+                          Configure
+                        </Button>
                       </div>
 
                       <Separator />
@@ -507,7 +932,13 @@ export default function SettingsPage() {
                             Permanently delete your account and all data
                           </p>
                         </div>
-                        <Button variant="destructive">Delete Account</Button>
+                        <Button 
+                          variant="destructive"
+                          onClick={() => setShowDeleteModal(true)}
+                        >
+                          <Trash2 className="mr-2 h-4 w-4" />
+                          Delete Account
+                        </Button>
                       </div>
                     </div>
                   </CardContent>
@@ -538,7 +969,12 @@ export default function SettingsPage() {
                       Receive email notifications about account activity
                     </p>
                   </div>
-                  <Switch id="email-notifications" defaultChecked />
+                  <Switch 
+                    id="email-notifications" 
+                    checked={preferences.email_notifications_enabled}
+                    onCheckedChange={(checked) => handlePreferenceToggle('email_notifications_enabled', checked)}
+                    disabled={preferencesSaving || preferencesLoading}
+                  />
                 </div>
 
                 <Separator />
@@ -550,7 +986,12 @@ export default function SettingsPage() {
                       Get notified about important security events
                     </p>
                   </div>
-                  <Switch id="security-alerts" defaultChecked />
+                  <Switch 
+                    id="security-alerts" 
+                    checked={preferences.security_alerts_enabled}
+                    onCheckedChange={(checked) => handlePreferenceToggle('security_alerts_enabled', checked)}
+                    disabled={preferencesSaving || preferencesLoading}
+                  />
                 </div>
 
                 <Separator />
@@ -562,7 +1003,12 @@ export default function SettingsPage() {
                       Receive updates about new features and promotions
                     </p>
                   </div>
-                  <Switch id="marketing-emails" />
+                  <Switch 
+                    id="marketing-emails" 
+                    checked={preferences.marketing_emails_enabled}
+                    onCheckedChange={(checked) => handlePreferenceToggle('marketing_emails_enabled', checked)}
+                    disabled={preferencesSaving || preferencesLoading}
+                  />
                 </div>
               </CardContent>
             </Card>
@@ -580,25 +1026,85 @@ export default function SettingsPage() {
               </CardHeader>
               <CardContent className="space-y-6">
                 <div className="grid grid-cols-3 gap-4">
-                  <div className="flex flex-col items-center gap-2">
-                    <div className="border-2 border-primary rounded-md p-2 cursor-pointer">
-                      <div className="w-full h-24 bg-background rounded-md border border-border"></div>
+                  <div 
+                    className="flex flex-col items-center gap-2 cursor-pointer group"
+                    onClick={() => handleThemeChange('system')}
+                  >
+                    <div className={`relative border-2 rounded-md p-2 transition-all ${
+                      (mounted && theme === 'system') || (!mounted && !theme)
+                        ? 'border-primary ring-2 ring-primary/20' 
+                        : 'border-muted group-hover:border-primary/50'
+                    }`}>
+                      <div className="w-full h-24 bg-gradient-to-br from-white via-gray-100 to-gray-900 dark:from-gray-900 dark:via-gray-800 dark:to-white rounded-md border border-border flex items-center justify-center">
+                        <Monitor className="h-8 w-8 text-muted-foreground" />
+                      </div>
+                      {(mounted && theme === 'system') || (!mounted && !theme) ? (
+                        <div className="absolute -top-1 -right-1 h-5 w-5 bg-primary rounded-full flex items-center justify-center">
+                          <Check className="h-3 w-3 text-primary-foreground" />
+                        </div>
+                      ) : null}
                     </div>
-                    <span className="text-sm font-medium">System</span>
+                    <span className={`text-sm font-medium ${
+                      (mounted && theme === 'system') || (!mounted && !theme)
+                        ? 'text-primary' 
+                        : 'text-foreground'
+                    }`}>
+                      System
+                    </span>
                   </div>
 
-                  <div className="flex flex-col items-center gap-2">
-                    <div className="border-2 border-muted rounded-md p-2 cursor-pointer">
-                      <div className="w-full h-24 bg-white rounded-md border border-gray-200"></div>
+                  <div 
+                    className="flex flex-col items-center gap-2 cursor-pointer group"
+                    onClick={() => handleThemeChange('light')}
+                  >
+                    <div className={`relative border-2 rounded-md p-2 transition-all ${
+                      mounted && theme === 'light'
+                        ? 'border-primary ring-2 ring-primary/20' 
+                        : 'border-muted group-hover:border-primary/50'
+                    }`}>
+                      <div className="w-full h-24 bg-white rounded-md border border-gray-200 flex items-center justify-center">
+                        <Sun className="h-8 w-8 text-yellow-500" />
+                      </div>
+                      {mounted && theme === 'light' ? (
+                        <div className="absolute -top-1 -right-1 h-5 w-5 bg-primary rounded-full flex items-center justify-center">
+                          <Check className="h-3 w-3 text-primary-foreground" />
+                        </div>
+                      ) : null}
                     </div>
-                    <span className="text-sm font-medium">Light</span>
+                    <span className={`text-sm font-medium ${
+                      mounted && theme === 'light'
+                        ? 'text-primary' 
+                        : 'text-foreground'
+                    }`}>
+                      Light
+                    </span>
                   </div>
 
-                  <div className="flex flex-col items-center gap-2">
-                    <div className="border-2 border-muted rounded-md p-2 cursor-pointer">
-                      <div className="w-full h-24 bg-gray-950 rounded-md border border-gray-800"></div>
+                  <div 
+                    className="flex flex-col items-center gap-2 cursor-pointer group"
+                    onClick={() => handleThemeChange('dark')}
+                  >
+                    <div className={`relative border-2 rounded-md p-2 transition-all ${
+                      mounted && theme === 'dark'
+                        ? 'border-primary ring-2 ring-primary/20' 
+                        : 'border-muted group-hover:border-primary/50'
+                    }`}>
+                      <div className="w-full h-24 bg-gray-950 rounded-md border border-gray-800 flex items-center justify-center">
+                        <Moon className="h-8 w-8 text-blue-400" />
+                      </div>
+                      {mounted && theme === 'dark' ? (
+                        <div className="absolute -top-1 -right-1 h-5 w-5 bg-primary rounded-full flex items-center justify-center">
+                          <Check className="h-3 w-3 text-primary-foreground" />
+                        </div>
+                      ) : null}
                     </div>
-                    <span className="text-sm font-medium">Dark</span>
+                    <span className={`text-sm font-medium ${
+                      mounted && theme === 'dark'
+                        ? 'text-primary' 
+                        : 'text-foreground'
+                    }`}>
+                      Dark
+                    </span>
                   </div>
                 </div>
 
@@ -611,7 +1117,12 @@ export default function SettingsPage() {
                       Enable animations throughout the interface
                     </p>
                   </div>
-                  <Switch id="animations" defaultChecked />
+                  <Switch 
+                    id="animations" 
+                    checked={animationsEnabled}
+                    onCheckedChange={handleAnimationsToggle}
+                    disabled={isSavingAppearance}
+                  />
                 </div>
               </CardContent>
             </Card>
@@ -637,9 +1148,24 @@ export default function SettingsPage() {
                       Add an extra layer of security to your account
                     </p>
                   </div>
-                  <Button variant="outline" size="sm">
-                    Setup
-                  </Button>
+                  <div className="flex items-center gap-3">
+                    {twoFactorEnabled ? (
+                      <div 
+                        className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-green-500/10 border border-green-500/20 cursor-pointer hover:bg-green-500/20 transition-colors"
+                        onClick={handleEnabledBadgeClick}
+                      >
+                        <div className="h-2 w-2 rounded-full bg-green-500"></div>
+                        <span className="text-sm font-medium text-green-600 dark:text-green-400">Enabled</span>
+                      </div>
+                    ) : (
+                      <Switch
+                        id="two-factor"
+                        checked={false}
+                        onCheckedChange={handle2FAToggle}
+                        disabled={is2FALoading}
+                      />
+                    )}
+                  </div>
                 </div>
 
                 <Separator />
@@ -651,7 +1177,14 @@ export default function SettingsPage() {
                       View a history of your account activity
                     </p>
                   </div>
-                  <Button variant="outline" size="sm">
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => {
+                      setShowActivityLogModal(true);
+                      fetchActivityLogs();
+                    }}
+                  >
                     View Log
                   </Button>
                 </div>
@@ -665,21 +1198,357 @@ export default function SettingsPage() {
                       Download a copy of your personal data
                     </p>
                   </div>
-                  <Button variant="outline" size="sm">
-                    Export
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={handleExportData}
+                    disabled={isExporting}
+                  >
+                    {isExporting ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Exporting...
+                      </>
+                    ) : (
+                      'Export'
+                    )}
                   </Button>
                 </div>
               </CardContent>
             </Card>
           </motion.div>
 
-            {/* Save Settings */}
-            <div className="flex justify-end">
-              <Button>Save Settings</Button>
-            </div>
             </div>
           </TabsContent>
         </Tabs>
+
+        {/* 2FA Setup Modal */}
+        <Dialog open={show2FASetup} onOpenChange={setShow2FASetup}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Setup Two-Factor Authentication</DialogTitle>
+              <DialogDescription>
+                Link your account to an authenticator app for enhanced security
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              {/* Instructions */}
+              <div className="space-y-3">
+                <div className="bg-muted/50 p-3 rounded-lg space-y-2">
+                  <p className="text-sm font-medium">Step 1: Add to Authenticator App</p>
+                  <p className="text-sm text-muted-foreground">
+                    {twoFactorSecret && (
+                      <>
+                        If you already have an authenticator app (Google Authenticator, Authy, Microsoft Authenticator, etc.), 
+                        scan the QR code below to <strong>add this account</strong> to your existing app.
+                      </>
+                    )}
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    Don't have an app? Download one first:
+                  </p>
+                  <div className="flex flex-wrap gap-2 text-xs">
+                    <a href="https://play.google.com/store/apps/details?id=com.google.android.apps.authenticator2" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+                      Google Authenticator
+                    </a>
+                    <span className="text-muted-foreground">•</span>
+                    <a href="https://authy.com/download/" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+                      Authy
+                    </a>
+                    <span className="text-muted-foreground">•</span>
+                    <a href="https://www.microsoft.com/en-us/security/mobile-authenticator" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+                      Microsoft Authenticator
+                    </a>
+                  </div>
+                </div>
+              </div>
+
+              {/* QR Code */}
+              {qrCodeUrl && (
+                <div className="flex flex-col items-center space-y-2">
+                  <div className="flex justify-center bg-white p-4 rounded-lg border-2 border-border">
+                    <img src={qrCodeUrl} alt="QR Code" className="w-48 h-48" />
+                  </div>
+                  {twoFactorSecret && (
+                    <div className="text-xs text-muted-foreground text-center max-w-xs">
+                      <p className="font-medium mb-1">Can't scan? Enter this code manually:</p>
+                      <code className="bg-muted px-2 py-1 rounded text-xs font-mono break-all">
+                        {twoFactorSecret}
+                      </code>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Code Input */}
+              <div className="space-y-2">
+                <Label>Step 2: Enter 6-digit code from your app</Label>
+                <p className="text-xs text-muted-foreground">
+                  After scanning, your app will generate a 6-digit code. Enter it below to verify.
+                </p>
+                <Input
+                  type="text"
+                  maxLength={6}
+                  value={verificationCode}
+                  onChange={(e) => setVerificationCode(e.target.value.replace(/\D/g, ''))}
+                  placeholder="000000"
+                  className="text-center text-2xl tracking-widest"
+                  autoFocus
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => {
+                setShow2FASetup(false);
+                setVerificationCode('');
+              }}>
+                Cancel
+              </Button>
+              <Button onClick={handle2FAVerify} disabled={verificationCode.length !== 6 || is2FALoading}>
+                {is2FALoading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Verifying...
+                  </>
+                ) : (
+                  'Verify & Enable'
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Backup Codes Modal */}
+        <Dialog open={showBackupCodes} onOpenChange={setShowBackupCodes}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Save Your Backup Codes</DialogTitle>
+              <DialogDescription>
+                These codes can be used to access your account if you lose access to your authenticator app. Save them in a safe place.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="bg-muted p-4 rounded-lg">
+                <div className="grid grid-cols-2 gap-2 font-mono text-sm">
+                  {backupCodes.map((code, index) => (
+                    <div key={index} className="p-2 bg-background rounded text-center">
+                      {code}
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <Alert>
+                <AlertTriangle className="h-4 w-4" />
+                <AlertDescription>
+                  These codes will not be shown again. Make sure to save them securely.
+                </AlertDescription>
+              </Alert>
+            </div>
+            <DialogFooter>
+              <Button onClick={() => setShowBackupCodes(false)}>
+                I've Saved These Codes
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* 2FA Toggle Confirmation Modal */}
+        <Dialog open={show2FAConfirmModal} onOpenChange={(open) => {
+          if (!open) {
+            setShow2FAConfirmModal(false);
+            setPending2FAState(null);
+          }
+        }}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>
+                {pending2FAState ? 'Enable Two-Factor Authentication' : 'Disable Two-Factor Authentication'}
+              </DialogTitle>
+              <DialogDescription>
+                {pending2FAState 
+                  ? 'Are you sure you want to enable two-factor authentication? You will need to scan a QR code with an authenticator app.'
+                  : 'Are you sure you want to disable two-factor authentication? This will make your account less secure.'}
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button 
+                variant="outline" 
+                onClick={() => {
+                  setShow2FAConfirmModal(false);
+                  setPending2FAState(null);
+                }}
+                disabled={is2FALoading}
+              >
+                Cancel
+              </Button>
+              <Button 
+                variant={pending2FAState ? "default" : "destructive"} 
+                onClick={handle2FAConfirm} 
+                disabled={is2FALoading}
+              >
+                {is2FALoading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    {pending2FAState ? 'Setting up...' : 'Disabling...'}
+                  </>
+                ) : (
+                  pending2FAState ? 'Enable 2FA' : 'Disable 2FA'
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Activity Log Modal */}
+        <Dialog open={showActivityLogModal} onOpenChange={setShowActivityLogModal}>
+          <DialogContent className="sm:max-w-2xl max-h-[80vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Account Activity Log</DialogTitle>
+              <DialogDescription>
+                View a history of your account activity and security events
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              {isLoadingLogs ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                  <span className="ml-2 text-sm text-muted-foreground">Loading activity logs...</span>
+                </div>
+              ) : activityLogs.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <p>No activity logs found.</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {activityLogs.map((log) => (
+                    <div
+                      key={log.id}
+                      className="flex items-start gap-3 p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors"
+                    >
+                      <div className="flex-shrink-0 mt-1">
+                        {log.type === 'login' && (
+                          <div className="h-8 w-8 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
+                            <Shield className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                          </div>
+                        )}
+                        {log.type === 'password_change' && (
+                          <div className="h-8 w-8 rounded-full bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center">
+                            <AlertTriangle className="h-4 w-4 text-orange-600 dark:text-orange-400" />
+                          </div>
+                        )}
+                        {log.type === 'profile_updated' && (
+                          <div className="h-8 w-8 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
+                            <Pencil className="h-4 w-4 text-green-600 dark:text-green-400" />
+                          </div>
+                        )}
+                        {!['login', 'password_change', 'profile_updated'].includes(log.type) && (
+                          <div className="h-8 w-8 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
+                            <Check className="h-4 w-4 text-gray-600 dark:text-gray-400" />
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex-1">
+                            <p className="text-sm font-medium">{getActivityTypeLabel(log.type)}</p>
+                            <p className="text-xs text-muted-foreground mt-1">
+                              {log.description || 'Account activity'}
+                            </p>
+                            {log.ipAddress && (
+                              <p className="text-xs text-muted-foreground mt-1">
+                                IP: {log.ipAddress}
+                              </p>
+                            )}
+                          </div>
+                          <div className="text-xs text-muted-foreground whitespace-nowrap">
+                            {new Date(log.timestamp).toLocaleString()}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowActivityLogModal(false)}>
+                Close
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Delete Account Modal */}
+        <Dialog open={showDeleteModal} onOpenChange={setShowDeleteModal}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="text-destructive">Delete Account</DialogTitle>
+              <DialogDescription>
+                This action cannot be undone. This will permanently delete your account and all associated data.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <Alert variant="destructive">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertDescription>
+                  All your data including customers, workers, queue entries, and payments will be permanently deleted.
+                </AlertDescription>
+              </Alert>
+              <div className="space-y-2">
+                <Label htmlFor="delete-password">Enter your password</Label>
+                <Input
+                  id="delete-password"
+                  type="password"
+                  value={deletePassword}
+                  onChange={(e) => setDeletePassword(e.target.value)}
+                  placeholder="Your password"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="delete-confirm">Type DELETE to confirm</Label>
+                <Input
+                  id="delete-confirm"
+                  type="text"
+                  value={deleteConfirmText}
+                  onChange={(e) => setDeleteConfirmText(e.target.value)}
+                  placeholder="DELETE"
+                />
+              </div>
+              {deleteError && (
+                <Alert variant="destructive">
+                  <AlertDescription>{deleteError}</AlertDescription>
+                </Alert>
+              )}
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => {
+                setShowDeleteModal(false);
+                setDeletePassword('');
+                setDeleteConfirmText('');
+                setDeleteError(null);
+              }}>
+                Cancel
+              </Button>
+              <Button 
+                variant="destructive" 
+                onClick={handleDeleteAccount}
+                disabled={isDeleting || deleteConfirmText !== 'DELETE' || !deletePassword}
+              >
+                {isDeleting ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Deleting...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    Delete Account
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
   );
 }

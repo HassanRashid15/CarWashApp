@@ -1,5 +1,6 @@
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
+import { sendProductNotificationEmail } from '@/lib/emails/notification-emails';
 
 export async function GET(request: NextRequest) {
   try {
@@ -185,6 +186,41 @@ export async function POST(request: NextRequest) {
       }
 
       throw error;
+    }
+
+    // Send email notification for new product
+    if (product && session.user) {
+      try {
+        const adminSupabase = createAdminClient();
+        const { data: adminProfile } = await adminSupabase
+          .from('profiles')
+          .select('id, email')
+          .eq('id', session.user.id)
+          .single();
+
+        if (adminProfile?.email && adminProfile?.id) {
+          // Check if low stock
+          const isLowStock = product.min_stock_level && product.stock_quantity <= product.min_stock_level;
+          
+          await sendProductNotificationEmail(
+            adminProfile.id,
+            adminProfile.email,
+            isLowStock ? 'low_stock' : 'created',
+            {
+              productName: product.name,
+              productSku: product.sku,
+              category: product.category || undefined,
+              price: product.price || 0,
+              stockQuantity: product.stock_quantity || 0,
+              minStockLevel: product.min_stock_level || undefined,
+              status: product.status || undefined,
+            }
+          );
+        }
+      } catch (emailError) {
+        console.error('Error sending product notification email:', emailError);
+        // Don't fail the request if email fails
+      }
     }
 
     return NextResponse.json({ product }, { status: 201 });

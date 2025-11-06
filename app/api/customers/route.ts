@@ -1,5 +1,6 @@
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
+import { sendCustomerNotificationEmail } from '@/lib/emails/notification-emails';
 
 export async function GET(request: NextRequest) {
   try {
@@ -206,6 +207,37 @@ export async function POST(request: NextRequest) {
       }
 
       throw error;
+    }
+
+    // Send email notification for new customer
+    if (customer && session.user) {
+      try {
+        const adminSupabase = createAdminClient();
+        const { data: adminProfile } = await adminSupabase
+          .from('profiles')
+          .select('id, email')
+          .eq('id', session.user.id)
+          .single();
+
+        if (adminProfile?.email && adminProfile?.id) {
+          await sendCustomerNotificationEmail(
+            adminProfile.id,
+            adminProfile.email,
+            'created',
+            {
+              customerName: customer.name,
+              customerId: customer.unique_id || customer.id,
+              phone: customer.phone || undefined,
+              vehicleType: customer.vehicle_type || 'car',
+              vehicleNumber: customer.vehicle_number || undefined,
+              status: customer.status || undefined,
+            }
+          );
+        }
+      } catch (emailError) {
+        console.error('Error sending customer notification email:', emailError);
+        // Don't fail the request if email fails
+      }
     }
 
     return NextResponse.json({ customer }, { status: 201 });
