@@ -7,9 +7,10 @@ import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { ThemeToggle } from '@/components/theme/theme-toggle';
 import { UserMenu } from '@/components/dashboard/user-menu';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
 import { User } from '@supabase/supabase-js';
+import { Droplet } from 'lucide-react';
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -28,12 +29,15 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isMobile, setIsMobile] = useState(false);
   const router = useRouter();
 
   // Close sidebar on mobile and tablet by default
   useEffect(() => {
-    const handleResize = () => {
-      if (window.innerWidth < 1024) {
+    const checkMobile = () => {
+      const mobile = window.innerWidth < 1024;
+      setIsMobile(mobile);
+      if (mobile) {
         setIsSidebarOpen(false);
       } else {
         setIsSidebarOpen(true);
@@ -41,12 +45,34 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
     };
 
     // Check on mount
-    handleResize();
+    checkMobile();
+
+    // Debounce resize events to prevent glitches
+    let timeoutId: NodeJS.Timeout;
+    const debouncedResize = () => {
+      clearTimeout(timeoutId);
+      timeoutId = setTimeout(checkMobile, 150);
+    };
 
     // Listen for resize events
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    window.addEventListener('resize', debouncedResize);
+    return () => {
+      window.removeEventListener('resize', debouncedResize);
+      clearTimeout(timeoutId);
+    };
   }, []);
+
+  // Prevent body scroll when sidebar is open on mobile
+  useEffect(() => {
+    if (isMobile && isSidebarOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [isMobile, isSidebarOpen]);
 
   const fetchProfile = async () => {
     const supabase = createClient();
@@ -123,7 +149,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   };
 
   const handleMobileNavigate = () => {
-    if (window.innerWidth < 1024) {
+    if (isMobile) {
       setIsSidebarOpen(false);
     }
   };
@@ -137,33 +163,57 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   }
 
   return (
-    <div className="flex h-screen bg-background relative">
+    <div className="flex h-screen bg-background relative overflow-hidden">
       {/* Backdrop overlay for mobile and tablet */}
-      {isSidebarOpen && (
-        <div
-          className="fixed inset-0 bg-black/50 z-40 lg:hidden"
-          onClick={() => setIsSidebarOpen(false)}
-        />
-      )}
+      <AnimatePresence>
+        {isSidebarOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="fixed inset-0 bg-black/50 z-40 lg:hidden"
+            onClick={() => setIsSidebarOpen(false)}
+          />
+        )}
+      </AnimatePresence>
 
       {/* Sidebar */}
-      <motion.div
-        initial={{ x: -20, opacity: 0 }}
-        animate={{ x: 0, opacity: 1 }}
-        transition={{ duration: 0.3 }}
-        className={`fixed lg:static inset-y-0 left-0 z-50 lg:z-auto ${
-          isSidebarOpen ? 'w-64' : 'w-20'
-        } bg-card border-r border-border transition-all duration-300 ease-in-out flex flex-col ${
-          isSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+      <motion.aside
+        initial={false}
+        animate={{
+          x: isSidebarOpen ? 0 : (isMobile ? -256 : 0),
+          width: isMobile ? 256 : (isSidebarOpen ? 256 : 80),
+        }}
+        transition={{
+          type: 'spring',
+          stiffness: 300,
+          damping: 30,
+        }}
+        className={`fixed lg:static inset-y-0 left-0 z-50 lg:z-auto bg-card border-r border-border flex flex-col ${
+          isMobile
+            ? isSidebarOpen ? 'translate-x-0' : '-translate-x-full'
+            : 'translate-x-0'
         }`}
       >
-        <div className={`p-6 border-b border-border flex items-center ${isSidebarOpen ? 'justify-between' : 'justify-center'}`}>
-          <Link href="/dashboard" className="flex items-center justify-center">
-            {isSidebarOpen ? (
-              <span className="text-xl font-bold">Dashboard</span>
-            ) : (
-              <span className="text-xl font-bold">D</span>
-            )}
+        <div className={`p-4 lg:p-6 border-b border-border flex items-center ${isSidebarOpen ? 'justify-between' : 'justify-center'} flex-shrink-0`}>
+          <Link href="/dashboard" className="flex items-center space-x-2">
+            <div className="p-2 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-lg flex-shrink-0">
+              <Droplet className="h-5 w-5 text-white" />
+            </div>
+            <AnimatePresence mode="wait">
+              {isSidebarOpen && (
+                <motion.span
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.2 }}
+                  className="text-xl font-bold bg-gradient-to-r from-blue-600 to-cyan-500 bg-clip-text text-transparent"
+                >
+                  AquaVance
+                </motion.span>
+              )}
+            </AnimatePresence>
           </Link>
           {/* Mobile and tablet close button */}
           {isSidebarOpen && (
@@ -171,12 +221,12 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
               variant="ghost"
               size="icon"
               onClick={() => setIsSidebarOpen(false)}
-              className="text-muted-foreground lg:hidden"
+              className="text-muted-foreground lg:hidden h-8 w-8"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
-                width="24"
-                height="24"
+                width="20"
+                height="20"
                 viewBox="0 0 24 24"
                 fill="none"
                 stroke="currentColor"
@@ -199,10 +249,10 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
             isCollapsed={!isSidebarOpen}
             onNavigate={handleMobileNavigate}
           />
-          <SidebarItem
-            href="/dashboard/settings"
-            icon={<SettingsIcon className="h-5 w-5" />}
-            label="Settings"
+        <SidebarItem
+            href="/dashboard/customers"
+            icon={<CustomerIcon className="h-5 w-5" />}
+            label="Customers"
             isCollapsed={!isSidebarOpen}
             onNavigate={handleMobileNavigate}
           />
@@ -213,10 +263,10 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
             isCollapsed={!isSidebarOpen}
             onNavigate={handleMobileNavigate}
           />
-          <SidebarItem
-            href="/dashboard/customers"
-            icon={<CustomerIcon className="h-5 w-5" />}
-            label="Customers"
+        <SidebarItem
+            href="/dashboard/products"
+            icon={<ProductIcon className="h-5 w-5" />}
+            label="Products"
             isCollapsed={!isSidebarOpen}
             onNavigate={handleMobileNavigate}
           />
@@ -234,16 +284,17 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
             isCollapsed={!isSidebarOpen}
             onNavigate={handleMobileNavigate}
           />
-          <SidebarItem
-            href="/dashboard/products"
-            icon={<ProductIcon className="h-5 w-5" />}
-            label="Products"
+         
+               <SidebarItem
+            href="/dashboard/settings"
+            icon={<SettingsIcon className="h-5 w-5" />}
+            label="Settings"
             isCollapsed={!isSidebarOpen}
             onNavigate={handleMobileNavigate}
           />
         </nav>
-        <div className={`flex items-center p-4 ${isSidebarOpen ? 'justify-start' : 'justify-center'}`}>
-              <Avatar className="h-10 w-10">
+        <div className={`flex items-center p-4 flex-shrink-0 ${isSidebarOpen ? 'justify-start' : 'justify-center'}`}>
+              <Avatar className="h-10 w-10 flex-shrink-0">
                 {profile?.avatar_url && (
                   <AvatarImage src={profile.avatar_url} alt={profile.email || user?.email || 'User'} />
                 )}
@@ -251,25 +302,33 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                   {getInitials()}
                 </AvatarFallback>
               </Avatar>
-              {isSidebarOpen && (
-                <div className="ml-3 flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate">
-                    {profile?.first_name && profile?.last_name
-                      ? `${profile.first_name} ${profile.last_name}`
-                      : profile?.email || user?.email || 'User'}
-                  </p>
-                  <p className="text-xs text-muted-foreground truncate">
-                    {profile?.email || user?.email}
-                  </p>
-                  {profile?.role && (
-                    <p className="text-xs text-muted-foreground truncate capitalize">
-                      {profile.role}
+              <AnimatePresence mode="wait">
+                {isSidebarOpen && (
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.2 }}
+                    className="ml-3 flex-1 min-w-0"
+                  >
+                    <p className="text-sm font-medium truncate">
+                      {profile?.first_name && profile?.last_name
+                        ? `${profile.first_name} ${profile.last_name}`
+                        : profile?.email || user?.email || 'User'}
                     </p>
-                  )}
-                </div>
-              )}
+                    <p className="text-xs text-muted-foreground truncate">
+                      {profile?.email || user?.email}
+                    </p>
+                    {profile?.role && (
+                      <p className="text-xs text-muted-foreground truncate capitalize">
+                        {profile.role}
+                      </p>
+                    )}
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
-        <div className="mt-auto">
+        <div className="mt-auto flex-shrink-0">
           <div className="p-4 space-y-3 border-t border-border">
  
             <Button
@@ -278,11 +337,22 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
               onClick={handleSignOut}
             >
               <LogOutIcon className={`h-5 w-5 ${isSidebarOpen ? 'mr-2' : ''}`} />
-              {isSidebarOpen && <span>Sign out</span>}
+              <AnimatePresence mode="wait">
+                {isSidebarOpen && (
+                  <motion.span
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.2 }}
+                  >
+                    Sign out
+                  </motion.span>
+                )}
+              </AnimatePresence>
             </Button>
           </div>
         </div>
-      </motion.div>
+      </motion.aside>
 
       {/* Main content */}
       <div className="flex-1 flex flex-col overflow-hidden w-full lg:w-auto">
@@ -379,11 +449,19 @@ function SidebarItem({ href, icon, label, isCollapsed, onNavigate }: SidebarItem
       <div className={`${isCollapsed ? '' : 'mr-2'} text-muted-foreground group-hover:text-foreground flex items-center justify-center`}>
         {icon}
       </div>
-      {!isCollapsed && (
-        <span className="text-muted-foreground group-hover:text-foreground">
-          {label}
-        </span>
-      )}
+      <AnimatePresence mode="wait">
+        {!isCollapsed && (
+          <motion.span
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="text-muted-foreground group-hover:text-foreground"
+          >
+            {label}
+          </motion.span>
+        )}
+      </AnimatePresence>
     </Link>
   );
 }

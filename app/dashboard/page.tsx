@@ -358,7 +358,7 @@ export default function DashboardPage() {
                 transition={{ duration: 0.2 }}
               >
                 <DialogHeader>
-                  <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between">
                     <div>
                       <DialogTitle className="text-2xl">Service Booking Details</DialogTitle>
                       <DialogDescription className="mt-1">
@@ -392,7 +392,7 @@ export default function DashboardPage() {
                         <span className="font-medium text-primary">{selectedBooking.service_price}</span>
                       </div>
                       {selectedBooking.service_features && selectedBooking.service_features.length > 0 && (
-                        <div>
+                  <div>
                           <span className="text-muted-foreground">Features:</span>
                           <ul className="mt-1 space-y-1">
                             {selectedBooking.service_features.map((feature, idx) => (
@@ -425,9 +425,9 @@ export default function DashboardPage() {
                         <div>
                           <span className="text-muted-foreground">Description:</span>
                           <p className="mt-1 text-sm">{selectedBooking.description}</p>
-                        </div>
+                </div>
                       )}
-                    </div>
+              </div>
                   </div>
 
                   {/* Status and Notes */}
@@ -484,7 +484,7 @@ export default function DashboardPage() {
                         </div>
                       )}
                       {selectedBooking.created_at && (
-                        <div>
+                  <div>
                           <Label>Created</Label>
                           <p className="mt-1 text-sm text-muted-foreground">
                             {new Date(selectedBooking.created_at).toLocaleString('en-US', {
@@ -495,8 +495,8 @@ export default function DashboardPage() {
                               hour: '2-digit',
                               minute: '2-digit'
                             })}
-                          </p>
-                        </div>
+                    </p>
+                  </div>
                       )}
                     </div>
                   )}
@@ -534,8 +534,8 @@ export default function DashboardPage() {
                             Save Changes
                           </>
                         )}
-                      </Button>
-                    </div>
+                </Button>
+              </div>
                   ) : (
                     <Button
                       variant="outline"

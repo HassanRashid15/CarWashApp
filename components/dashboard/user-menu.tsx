@@ -1,9 +1,10 @@
 'use client';
 
 import * as React from 'react';
+import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { LogOut } from 'lucide-react';
+import { LogOut, LayoutDashboard, User } from 'lucide-react';
 
 interface UserMenuProps {
   user: {
@@ -70,7 +71,25 @@ export function UserMenu({ user, onSignOut }: UserMenuProps) {
               <p className="text-xs text-muted-foreground truncate capitalize mt-1">{user.role}</p>
             )}
           </div>
-          <div className="p-1">
+          <div className="p-1 space-y-1">
+            <Link href="/dashboard" onClick={() => setIsOpen(false)}>
+              <Button
+                variant="ghost"
+                className="w-full justify-start text-muted-foreground hover:text-foreground"
+              >
+                <LayoutDashboard className="h-4 w-4 mr-2" />
+                Dashboard
+              </Button>
+            </Link>
+            <Link href="/dashboard/settings?tab=profile" onClick={() => setIsOpen(false)}>
+              <Button
+                variant="ghost"
+                className="w-full justify-start text-muted-foreground hover:text-foreground"
+              >
+                <User className="h-4 w-4 mr-2" />
+                View Profile
+              </Button>
+            </Link>
             <Button
               variant="ghost"
               className="w-full justify-start text-muted-foreground hover:text-destructive"
