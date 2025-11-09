@@ -4,6 +4,9 @@ import { WelcomeSection } from '@/components/dashboard/welcome-section';
 import { StatsCard } from '@/components/dashboard/stats-card';
 import { ActivityList } from '@/components/dashboard/activity-list';
 import { PlaceholderChart } from '@/components/dashboard/placeholder-chart';
+import { CurrentPlanCard } from '@/components/dashboard/current-plan-card';
+import { ApprovalRequestsSection } from '@/components/dashboard/approval-requests-section';
+import { CreditsSection } from '@/components/dashboard/credits-section';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -13,7 +16,8 @@ import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { User } from '@supabase/supabase-js';
 import { motion, AnimatePresence } from 'framer-motion';
-import { MessageSquare, Phone, Edit2, CheckCircle2, X, Loader2, Clock, CheckCircle, XCircle, User as UserIcon } from 'lucide-react';
+import { useSearchParams, useRouter } from 'next/navigation';
+import { MessageSquare, Phone, Edit2, CheckCircle2, X, Loader2, Clock, CheckCircle, XCircle, User as UserIcon, PartyPopper } from 'lucide-react';
 
 interface ServiceBooking {
   id: string;
@@ -30,8 +34,10 @@ interface ServiceBooking {
 }
 
 export default function DashboardPage() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
-  const [profile, setProfile] = useState<{ first_name?: string; last_name?: string; email?: string } | null>(null);
+  const [profile, setProfile] = useState<{ first_name?: string; last_name?: string; email?: string; role?: string } | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [serviceBookings, setServiceBookings] = useState<ServiceBooking[]>([]);
   const [isLoadingBookings, setIsLoadingBookings] = useState(true);
@@ -42,6 +48,8 @@ export default function DashboardPage() {
   const [editNotes, setEditNotes] = useState<string>('');
   const [isUpdating, setIsUpdating] = useState(false);
   const [updateMessage, setUpdateMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [showPurchaseSuccess, setShowPurchaseSuccess] = useState(false);
+  const [showPurchaseCancelled, setShowPurchaseCancelled] = useState(false);
 
   useEffect(() => {
     async function getUser() {
@@ -56,7 +64,7 @@ export default function DashboardPage() {
         // Fetch profile data
         const { data: profileData } = await supabase
           .from('profiles')
-          .select('first_name, last_name, email')
+          .select('first_name, last_name, email, role')
           .eq('id', session.user.id)
           .single();
 
@@ -71,6 +79,106 @@ export default function DashboardPage() {
     getUser();
     fetchServiceBookings();
   }, []);
+
+  // Handle purchase success and cancellation modals
+  useEffect(() => {
+    const purchaseParam = searchParams.get('purchase');
+    const sessionId = searchParams.get('session_id');
+    
+    // Use a ref to prevent multiple executions
+    const hasProcessed = sessionStorage.getItem('purchase_processed');
+    
+    if (purchaseParam === 'success' && !hasProcessed) {
+      // Mark as processed to prevent re-execution
+      sessionStorage.setItem('purchase_processed', 'true');
+      
+      setShowPurchaseSuccess(true);
+      
+      // Verify checkout and create subscription (fallback if webhook didn't fire)
+      // This will try with sessionId if available, or fallback to checking customer subscriptions
+      fetch('/api/subscriptions/verify-checkout', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ sessionId: sessionId || null }),
+      })
+      .then(res => {
+        console.log('📡 Verify checkout response status:', res.status);
+        return res.json();
+      })
+        .then(data => {
+          console.log('📡 Verify checkout response data:', data);
+          if (data.success) {
+            console.log('✅ Subscription verified and created:', data);
+            // Dispatch event to refresh subscription card
+            window.dispatchEvent(new CustomEvent('purchase-success'));
+            // Clear query params and refresh after 2 seconds
+            setTimeout(() => {
+              // Clear the processed flag
+              sessionStorage.removeItem('purchase_processed');
+              // Navigate without query params
+              router.replace('/dashboard');
+              // Small delay then reload to show updated subscription
+              setTimeout(() => {
+                window.location.reload();
+              }, 100);
+            }, 2000);
+          } else {
+          console.error('❌ Could not verify checkout:', {
+            error: data.error,
+            details: data.details,
+            userId: data.userId,
+            planType: data.planType,
+          });
+          // Show error to user
+          alert(`Failed to create subscription: ${data.error || 'Unknown error'}. Please check server logs or contact support.`);
+          // Still clear params even if verification failed
+          setTimeout(() => {
+            sessionStorage.removeItem('purchase_processed');
+            router.replace('/dashboard');
+          }, 2000);
+        }
+      })
+      .catch(error => {
+        console.error('❌ Error verifying checkout:', error);
+        // Clear params on error too
+        setTimeout(() => {
+          sessionStorage.removeItem('purchase_processed');
+          router.replace('/dashboard');
+        }, 2000);
+      });
+      
+      // Auto-close after 5 seconds and redirect to dashboard (clearing query param)
+      const timer = setTimeout(() => {
+        setShowPurchaseSuccess(false);
+        sessionStorage.removeItem('purchase_processed');
+        router.replace('/dashboard');
+      }, 5000);
+
+      return () => {
+        clearTimeout(timer);
+      };
+    } else if (purchaseParam === 'cancelled' && !hasProcessed) {
+      sessionStorage.setItem('purchase_processed', 'true');
+      setShowPurchaseCancelled(true);
+      
+      // Auto-close after 5 seconds and redirect to dashboard (clearing query param)
+      const timer = setTimeout(() => {
+        setShowPurchaseCancelled(false);
+        sessionStorage.removeItem('purchase_processed');
+        router.replace('/dashboard');
+      }, 5000);
+
+      return () => {
+        clearTimeout(timer);
+      };
+    } else if (hasProcessed && (purchaseParam === 'success' || purchaseParam === 'cancelled')) {
+      // If already processed, just clear the query params immediately
+      router.replace('/dashboard');
+      sessionStorage.removeItem('purchase_processed');
+    }
+  }, [searchParams, router]);
 
   const fetchServiceBookings = async () => {
     try {
@@ -211,14 +319,119 @@ export default function DashboardPage() {
     return null; // Loading state is handled by the layout
   }
 
+  // Check if user is super admin (by role or email)
+  const superAdminEmail = 'hassanrashid001@icloud.com';
+  const isSuperAdmin = profile?.role === 'super_admin' || 
+                       profile?.email === superAdminEmail ||
+                       user?.email === superAdminEmail;
+
   return (
     <>
+      {/* Purchase Success Modal */}
+      <Dialog 
+        open={showPurchaseSuccess} 
+        onOpenChange={(open) => {
+          if (!open) {
+            setShowPurchaseSuccess(false);
+            router.push('/dashboard');
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <div className="flex items-center justify-center mb-4">
+              <div className="rounded-full bg-green-100 p-3">
+                <PartyPopper className="h-8 w-8 text-green-600" />
+              </div>
+            </div>
+            <DialogTitle className="text-center text-2xl">Congratulations!</DialogTitle>
+            <DialogDescription className="text-center text-base pt-2">
+              Your plan purchase was successful! Your subscription is now pending approval from the super admin.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex items-center justify-center py-4">
+            <motion.div
+              initial={{ scale: 0 }}
+              animate={{ scale: 1 }}
+              transition={{ type: "spring", stiffness: 200, damping: 15 }}
+            >
+              <CheckCircle className="h-16 w-16 text-green-500" />
+            </motion.div>
+          </div>
+          <DialogFooter className="sm:justify-center">
+            <p className="text-sm text-muted-foreground text-center">
+              Redirecting to dashboard in a few seconds...
+            </p>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Purchase Cancelled Modal */}
+      <Dialog 
+        open={showPurchaseCancelled} 
+        onOpenChange={(open) => {
+          if (!open) {
+            setShowPurchaseCancelled(false);
+            router.push('/dashboard');
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <div className="flex items-center justify-center mb-4">
+              <div className="rounded-full bg-orange-100 p-3">
+                <XCircle className="h-8 w-8 text-orange-600" />
+              </div>
+            </div>
+            <DialogTitle className="text-center text-2xl">Purchase Cancelled</DialogTitle>
+            <DialogDescription className="text-center text-base pt-2">
+              Your plan purchase was cancelled. No charges were made. You can try again anytime from the billing settings.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex items-center justify-center py-4">
+            <motion.div
+              initial={{ scale: 0 }}
+              animate={{ scale: 1 }}
+              transition={{ type: "spring", stiffness: 200, damping: 15 }}
+            >
+              <XCircle className="h-16 w-16 text-orange-500" />
+            </motion.div>
+          </div>
+          <DialogFooter className="sm:justify-center">
+            <p className="text-sm text-muted-foreground text-center">
+              Redirecting to dashboard in a few seconds...
+            </p>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Credits Section - Show only for users without plan */}
+      {!isSuperAdmin && (
+        <div className="mb-6">
+          <CreditsSection />
+        </div>
+      )}
+
       {/* Welcome Section */}
       <WelcomeSection
         firstName={profile?.first_name}
         lastName={profile?.last_name}
         userEmail={profile?.email || user?.email || 'user@example.com'}
       />
+
+      {/* Current Plan Card - Hide for super admin */}
+      {!isSuperAdmin && (
+        <div className="mt-6">
+          <CurrentPlanCard />
+        </div>
+      )}
+
+      {/* Approval Requests Section - Show only for super admin */}
+      {isSuperAdmin && (
+        <div className="mt-6">
+          <ApprovalRequestsSection />
+        </div>
+      )}
 
       {/* Stats Section */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mt-6">

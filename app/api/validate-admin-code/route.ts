@@ -23,7 +23,48 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 1) Check admin_screencode table (active codes)
+    // 1) Check admin_codes table (separate table for admin codes)
+    const { data: codeRow, error: codeErr } = await supabase
+      .from('admin_codes')
+      .select('id, code, user_id, is_active, is_screen_code, expires_at, usage_count')
+      .eq('code', normalized)
+      .eq('is_active', true)
+      .maybeSingle();
+
+    if (codeErr) {
+      // If table doesn't exist, that's okay - fall through to other checks
+      if (codeErr.code === '42P01' || codeErr.message?.includes('does not exist')) {
+        console.log('admin_codes table does not exist, checking other sources...');
+      } else {
+        console.error('Error checking admin_codes:', codeErr);
+        // Don't fail, fall through to other checks
+      }
+    } else if (codeRow) {
+      // Check if code is expired
+      if (codeRow.expires_at && new Date(codeRow.expires_at) < new Date()) {
+        return NextResponse.json(
+          { valid: false, error: 'This admin code has expired' },
+          { status: 400 }
+        );
+      }
+      
+      // Code is valid, increment usage
+      await supabase
+        .from('admin_codes')
+        .update({ 
+          usage_count: (codeRow.usage_count || 0) + 1,
+          used_at: (codeRow as any).used_at || new Date().toISOString()
+        })
+        .eq('id', codeRow.id);
+      
+      return NextResponse.json({ 
+        valid: true,
+        isScreenCode: codeRow.is_screen_code || false,
+        codeId: codeRow.id
+      });
+    }
+
+    // 2) Fallback: Check admin_screencode table (legacy support)
     const { data: screenRow, error: screenErr } = await supabase
       .from('admin_screencode')
       .select('user_id')
@@ -31,22 +72,11 @@ export async function POST(request: NextRequest) {
       .eq('is_active', true)
       .maybeSingle();
 
-    if (screenErr) {
-      // If table doesn't exist, that's okay - fall through to profiles check
-      if (screenErr.code === '42P01' || screenErr.message?.includes('does not exist')) {
-        console.log('admin_screencode table does not exist, checking profiles...');
-      } else {
-        console.error('Error checking admin_screencode:', screenErr);
-        return NextResponse.json(
-          { valid: false, error: 'Database error validating code', details: screenErr.message },
-          { status: 500 }
-        );
-      }
-    } else if (screenRow) {
-      return NextResponse.json({ valid: true });
+    if (!screenErr && screenRow) {
+      return NextResponse.json({ valid: true, isScreenCode: true });
     }
 
-    // 2) Fallback: check profiles.admin_code (for sequential profile-linked codes)
+    // 3) Fallback: check profiles.admin_code (for sequential profile-linked codes)
     const { data, error } = await supabase
       .from('profiles')
       .select('id')

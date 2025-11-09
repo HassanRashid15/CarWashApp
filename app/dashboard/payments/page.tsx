@@ -8,6 +8,8 @@ import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Loader2, Search, DollarSign, Hash, Edit2, Calendar, CreditCard, X, Save } from 'lucide-react';
+import { FeatureRestrictionOverlay } from '@/components/subscription/feature-restriction-overlay';
+import { hasFeature, getPlanLimits } from '@/lib/utils/plan-limits';
 
 type PaymentMethod = 'cash' | 'easypaisa' | 'jazzcash' | 'bank_transfer' | null;
 type PaymentStatus = 'pending' | 'paid' | 'unpaid';
@@ -77,6 +79,9 @@ export default function PaymentsPage() {
   const [selectedEntry, setSelectedEntry] = useState<QueueEntry | null>(null);
   const [paymentFilter, setPaymentFilter] = useState<string>('all');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [subscription, setSubscription] = useState<any>(null);
+  const [usage, setUsage] = useState<{ customers: number; workers: number; products: number } | null>(null);
+  const [checkingSubscription, setCheckingSubscription] = useState(true);
   const [editFormData, setEditFormData] = useState({
     payment_status: 'pending' as PaymentStatus,
     payment_method: '' as PaymentMethod | '',
@@ -84,8 +89,29 @@ export default function PaymentsPage() {
   });
 
   useEffect(() => {
-    fetchCompletedEntries();
+    fetchSubscription();
   }, []);
+
+  useEffect(() => {
+    if (!checkingSubscription) {
+      fetchCompletedEntries();
+    }
+  }, [checkingSubscription]);
+
+  const fetchSubscription = async () => {
+    try {
+      const response = await fetch('/api/subscriptions');
+      if (response.ok) {
+        const data = await response.json();
+        setSubscription(data.subscription);
+        setUsage(data.usage);
+      }
+    } catch (error) {
+      console.error('Error fetching subscription:', error);
+    } finally {
+      setCheckingSubscription(false);
+    }
+  };
 
   useEffect(() => {
     filterEntries();
@@ -274,8 +300,53 @@ export default function PaymentsPage() {
 
   const pendingCount = filteredEntries.filter(entry => entry.payment_status === 'pending' || !entry.payment_method).length;
 
+  // Check if payment processing feature is available based on customer count and subscription
+  const isPaymentLocked = (): boolean => {
+    if (checkingSubscription || !usage) return true; // Lock while loading
+    
+    // If no subscription, check customer count
+    if (!subscription || !subscription.planType) {
+      const maxCustomers = 5; // No plan limit
+      return usage.customers >= maxCustomers;
+    }
+
+    // If has subscription, check feature availability
+    const hasFeatureAccess = hasFeature(subscription.planType, 'paymentProcessing');
+    if (!hasFeatureAccess) {
+      // If feature not available in plan, check customer count
+      const limits = getPlanLimits(subscription.planType);
+      const maxCustomers = limits.maxCustomers;
+      if (maxCustomers === null) return false; // Unlimited
+      return usage.customers >= maxCustomers;
+    }
+
+    // Feature is available in plan, but check customer limit
+    const limits = getPlanLimits(subscription.planType);
+    const maxCustomers = limits.maxCustomers;
+    if (maxCustomers === null) return false; // Unlimited
+    return usage.customers >= maxCustomers;
+  };
+
+  if (checkingSubscription) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (isPaymentLocked()) {
+    return (
+      <FeatureRestrictionOverlay
+        featureName="Payment Processing"
+        requiredPlan="Professional"
+        description="Payment Processing allows you to track and manage payment records for completed services. You've reached your customer limit. Upgrade your plan to continue using this feature."
+      />
+    );
+  }
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 relative">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold tracking-tight">Payment Records</h2>

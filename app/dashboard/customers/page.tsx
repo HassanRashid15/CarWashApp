@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Loader2, Plus, Edit2, Trash2, X, Check, Users, Phone, Calendar, Clock, Car, Bike, AlertCircle, Eye, Hash } from 'lucide-react';
+import { UpgradeModal } from '@/components/subscription/upgrade-modal';
 
 type VehicleType = 'car' | 'bike' | 'other';
 type CustomerStatus = 'waiting' | 'washing' | 'completed' | 'cancelled';
@@ -110,10 +111,28 @@ export default function CustomersPage() {
     remarks: '',
   });
   const [modalError, setModalError] = useState<string | null>(null);
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [currentPlan, setCurrentPlan] = useState<'trial' | 'starter' | 'professional' | 'enterprise'>('trial');
+  const [limitInfo, setLimitInfo] = useState<{ currentCount: number; maxLimit: number | null } | null>(null);
 
   useEffect(() => {
     fetchCustomers();
+    fetchSubscriptionInfo();
   }, []);
+
+  const fetchSubscriptionInfo = async () => {
+    try {
+      const response = await fetch('/api/subscriptions');
+      if (response.ok) {
+        const data = await response.json();
+        if (data.subscription?.planType) {
+          setCurrentPlan(data.subscription.planType);
+        }
+      }
+    } catch (err) {
+      console.error('Error fetching subscription:', err);
+    }
+  };
 
   const fetchCustomers = async () => {
     try {
@@ -164,6 +183,19 @@ export default function CustomersPage() {
 
       if (!response.ok) {
         const data = await response.json();
+        
+        // Check if limit reached and show upgrade modal
+        if (data.showUpgradeModal || data.limitReached) {
+          setLimitInfo({
+            currentCount: data.currentCount || 0,
+            maxLimit: data.maxLimit || null,
+          });
+          setCurrentPlan(data.planType || 'trial');
+          setShowUpgradeModal(true);
+          setModalError(null); // Don't show error, modal will handle it
+          return;
+        }
+        
         throw new Error(data.error || 'Failed to save customer');
       }
 
@@ -1168,6 +1200,15 @@ export default function CustomersPage() {
           </table>
         </div>
       )}
+
+      {/* Upgrade Modal */}
+      <UpgradeModal
+        isOpen={showUpgradeModal}
+        onClose={() => setShowUpgradeModal(false)}
+        currentPlan={currentPlan}
+        limitReached={limitInfo ? { ...limitInfo, limitType: 'customers' } : undefined}
+        message={limitInfo ? `You've reached your limit of ${limitInfo.maxLimit} customers. Upgrade to continue adding more customers.` : undefined}
+      />
     </div>
   );
 }

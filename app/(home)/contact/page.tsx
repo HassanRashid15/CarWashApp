@@ -1,16 +1,23 @@
-import type { Metadata } from 'next';
+'use client';
+
+import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Mail, Phone, MapPin, Clock } from 'lucide-react';
-
-export const metadata: Metadata = {
-  title: 'Contact Us - CarWash',
-  description: 'Get in touch with CarWash for all your car care needs',
-};
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Mail, Phone, MapPin, Clock, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
 
 export default function ContactPage() {
+  const [formData, setFormData] = useState({
+    name: '',
+    email: '',
+    phone: '',
+    message: '',
+  });
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [submitSuccess, setSubmitSuccess] = useState(false);
   return (
     <div className="pt-16 pb-20">
       <section className="py-20 bg-gradient-to-br from-primary/5 via-background to-primary/5">
@@ -36,10 +43,59 @@ export default function ContactPage() {
                   <CardTitle>Send us a Message</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <form className="space-y-6">
+                  <form 
+                    className="space-y-6"
+                    onSubmit={async (e) => {
+                      e.preventDefault();
+                      
+                      if (!formData.name.trim() || !formData.email.trim() || !formData.message.trim()) {
+                        setSubmitError('Please fill in all required fields');
+                        return;
+                      }
+
+                      setIsSubmitting(true);
+                      setSubmitError(null);
+                      setSubmitSuccess(false);
+
+                      try {
+                        const response = await fetch('/api/contact', {
+                          method: 'POST',
+                          headers: {
+                            'Content-Type': 'application/json',
+                          },
+                          body: JSON.stringify(formData),
+                        });
+
+                        const data = await response.json();
+
+                        if (!response.ok) {
+                          throw new Error(data.error || 'Failed to send message');
+                        }
+
+                        setSubmitSuccess(true);
+                        setFormData({ name: '', email: '', phone: '', message: '' });
+                        
+                        // Reset success message after 5 seconds
+                        setTimeout(() => {
+                          setSubmitSuccess(false);
+                        }, 5000);
+                      } catch (error) {
+                        setSubmitError(error instanceof Error ? error.message : 'Failed to send message');
+                      } finally {
+                        setIsSubmitting(false);
+                      }
+                    }}
+                  >
                     <div className="space-y-2">
                       <Label htmlFor="name">Name</Label>
-                      <Input id="name" placeholder="Your name" required />
+                      <Input 
+                        id="name" 
+                        placeholder="Your name" 
+                        required
+                        value={formData.name}
+                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                        disabled={isSubmitting}
+                      />
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="email">Email</Label>
@@ -48,6 +104,9 @@ export default function ContactPage() {
                         type="email"
                         placeholder="your.email@example.com"
                         required
+                        value={formData.email}
+                        onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                        disabled={isSubmitting}
                       />
                     </div>
                     <div className="space-y-2">
@@ -56,6 +115,9 @@ export default function ContactPage() {
                         id="phone"
                         type="tel"
                         placeholder="+1 (555) 123-4567"
+                        value={formData.phone}
+                        onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                        disabled={isSubmitting}
                       />
                     </div>
                     <div className="space-y-2">
@@ -65,10 +127,37 @@ export default function ContactPage() {
                         className="flex min-h-[120px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                         placeholder="Your message..."
                         required
+                        value={formData.message}
+                        onChange={(e) => setFormData({ ...formData, message: e.target.value })}
+                        disabled={isSubmitting}
                       />
                     </div>
-                    <Button type="submit" className="w-full">
-                      Send Message
+                    
+                    {submitError && (
+                      <Alert variant="destructive">
+                        <AlertCircle className="h-4 w-4" />
+                        <AlertDescription>{submitError}</AlertDescription>
+                      </Alert>
+                    )}
+                    
+                    {submitSuccess && (
+                      <Alert className="border-green-500 bg-green-50 dark:bg-green-950">
+                        <CheckCircle2 className="h-4 w-4 text-green-600" />
+                        <AlertDescription className="text-green-800 dark:text-green-200">
+                          Your message has been sent successfully! We'll get back to you soon.
+                        </AlertDescription>
+                      </Alert>
+                    )}
+
+                    <Button type="submit" className="w-full" disabled={isSubmitting}>
+                      {isSubmitting ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Sending...
+                        </>
+                      ) : (
+                        'Send Message'
+                      )}
                     </Button>
                   </form>
                 </CardContent>

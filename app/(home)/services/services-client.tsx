@@ -11,79 +11,18 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Car, CheckCircle2, Loader2, Send, X } from 'lucide-react';
 
 interface Service {
+  id?: string;
   name: string;
   price: string;
   features: string[];
+  isPopular?: boolean;
+  iconName?: string | null;
+  iconColor?: string | null;
 }
 
 export function ServicesClient() {
-  const services: Service[] = [
-    {
-      name: 'Basic Wash',
-      price: '$15',
-      features: [
-        'Exterior wash and dry',
-        'Tire cleaning',
-        'Window cleaning',
-        'Quick wipe down',
-      ],
-    },
-    {
-      name: 'Premium Wash',
-      price: '$35',
-      features: [
-        'Full exterior wash',
-        'Interior vacuum',
-        'Dashboard cleaning',
-        'Tire shine',
-        'Door jamb cleaning',
-      ],
-    },
-    {
-      name: 'Full Detail',
-      price: '$75',
-      features: [
-        'Complete interior detailing',
-        'Exterior waxing',
-        'Polish and buff',
-        'Engine bay cleaning',
-        'Leather conditioning',
-        'Carpet shampoo',
-      ],
-    },
-    {
-      name: 'Interior Detail',
-      price: '$50',
-      features: [
-        'Deep interior vacuum',
-        'Seat cleaning',
-        'Dashboard polish',
-        'Window cleaning',
-        'Carpet shampoo',
-      ],
-    },
-    {
-      name: 'Exterior Detail',
-      price: '$60',
-      features: [
-        'Clay bar treatment',
-        'Polish and wax',
-        'Headlight restoration',
-        'Tire shine',
-        'Chrome polishing',
-      ],
-    },
-    {
-      name: 'Monthly Package',
-      price: '$100/month',
-      features: [
-        '4 premium washes',
-        '1 full detail',
-        'Priority booking',
-        'Discount on add-ons',
-      ],
-    },
-  ];
+  const [services, setServices] = useState<Service[]>([]);
+  const [isLoadingServices, setIsLoadingServices] = useState(true);
 
   const [isServiceModalOpen, setIsServiceModalOpen] = useState(false);
   const [selectedService, setSelectedService] = useState<Service | null>(null);
@@ -97,6 +36,44 @@ export function ServicesClient() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitSuccess, setSubmitSuccess] = useState(false);
+
+  // Fetch washing packages from Supabase
+  useEffect(() => {
+    async function fetchWashingPackages() {
+      try {
+        setIsLoadingServices(true);
+        const response = await fetch('/api/washing-packages', {
+          cache: 'no-store',
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          // Transform to match Service interface
+          const transformedServices = (data.packages || []).map((pkg: any) => ({
+            id: pkg.id,
+            name: pkg.displayName,
+            price: `$${pkg.price.toFixed(0)}`,
+            features: pkg.features,
+            isPopular: pkg.isPopular,
+            iconName: pkg.iconName,
+            iconColor: pkg.iconColor,
+          }));
+          setServices(transformedServices);
+        } else {
+          console.error('Failed to fetch washing packages');
+          // Fallback to empty array if API fails
+          setServices([]);
+        }
+      } catch (error) {
+        console.error('Error fetching washing packages:', error);
+        setServices([]);
+      } finally {
+        setIsLoadingServices(false);
+      }
+    }
+    
+    fetchWashingPackages();
+  }, []);
 
   // Reset booking form state when modal closes
   useEffect(() => {
@@ -173,10 +150,19 @@ export function ServicesClient() {
     <>
       <section className="py-20 bg-background">
         <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {services.map((service, index) => (
+          {isLoadingServices ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+          ) : services.length === 0 ? (
+            <div className="text-center py-12 text-muted-foreground">
+              No washing packages available. Please run the database migration.
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+              {services.map((service, index) => (
               <motion.div
-                key={index}
+                key={service.id || index}
                 initial={{ opacity: 0, y: 30 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
@@ -206,8 +192,9 @@ export function ServicesClient() {
                   Select Service
                 </Button>
               </motion.div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
       </section>
 

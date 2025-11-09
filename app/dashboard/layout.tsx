@@ -1,4 +1,5 @@
 import { DashboardLayout } from '@/components/dashboard/dashboard-layout';
+import { ErrorBoundary } from '@/components/error-boundary';
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
@@ -11,7 +12,11 @@ export default function DashboardLayoutWrapper({
 }: {
   children: React.ReactNode;
 }) {
-  return <DashboardLayout>{children}</DashboardLayout>;
+  return (
+    <ErrorBoundary>
+      <DashboardLayout>{children}</DashboardLayout>
+    </ErrorBoundary>
+  );
 }
 
 

@@ -1,6 +1,8 @@
 import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
-import { sendCustomerNotificationEmail } from '@/lib/emails/notification-emails';
+import { sendCustomerNotificationEmail, sendCustomerLimitWarningEmail } from '@/lib/emails/notification-emails';
+import { checkSubscriptionAccess, getUsageCounts } from '@/lib/utils/subscription-helpers';
+import { isWithinLimit, getPlanLimits, type PlanType } from '@/lib/utils/plan-limits';
 
 export async function GET(request: NextRequest) {
   try {
@@ -79,6 +81,82 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Check subscription access
+    let subscriptionCheck;
+    try {
+      subscriptionCheck = await checkSubscriptionAccess(session.user.id);
+    } catch (subError) {
+      console.error('Error checking subscription access:', subError);
+      return NextResponse.json(
+        { 
+          error: 'Failed to verify subscription. Please check your configuration.',
+          details: subError instanceof Error ? subError.message : 'Unknown error'
+        },
+        { status: 500 }
+      );
+    }
+
+    if (!subscriptionCheck.allowed) {
+      return NextResponse.json(
+        { error: subscriptionCheck.error || 'Subscription required' },
+        { status: 403 }
+      );
+    }
+
+    // Check customer limit
+    let usage;
+    try {
+      usage = await getUsageCounts(session.user.id);
+    } catch (usageError) {
+      console.error('Error getting usage counts:', usageError);
+      return NextResponse.json(
+        { 
+          error: 'Failed to check usage limits. Please try again.',
+          details: usageError instanceof Error ? usageError.message : 'Unknown error'
+        },
+        { status: 500 }
+      );
+    }
+
+    // If no subscription found, restrict to 5 customers only
+    if (!subscriptionCheck.subscription) {
+      const maxCustomersNoPlan = 5;
+      if (usage.customers >= maxCustomersNoPlan) {
+        return NextResponse.json(
+          { 
+            error: `You've reached the customer limit (${maxCustomersNoPlan}) for your current plan. Please select a subscription plan to add more customers.`,
+            limitReached: true,
+            showUpgradeModal: true,
+            currentCount: usage.customers,
+            maxLimit: maxCustomersNoPlan,
+            planType: null,
+          },
+          { status: 403 }
+        );
+      }
+    } else {
+      // Check limits for users with subscription
+      const planType = subscriptionCheck.subscription.planType;
+    const limits = getPlanLimits(planType);
+
+    if (!isWithinLimit(planType, 'maxCustomers', usage.customers)) {
+      const maxCustomers = limits.maxCustomers;
+      return NextResponse.json(
+        { 
+          error: maxCustomers 
+            ? `You've reached the customer limit (${maxCustomers}) for your plan. Upgrade to continue adding customers.`
+            : 'Unable to create customer. Please upgrade your plan.',
+          limitReached: true,
+          showUpgradeModal: true,
+          currentCount: usage.customers,
+          maxLimit: maxCustomers,
+          planType: planType,
+        },
+        { status: 403 }
+      );
+      }
+    }
+
     // Validate vehicle_type if provided
     const validVehicleTypes = ['car', 'bike', 'other'];
     if (vehicle_type && !validVehicleTypes.includes(vehicle_type)) {
@@ -97,10 +175,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Generate unique_id (format: CUST-YYYYMMDD-XXXX)
-    const datePrefix = new Date().toISOString().split('T')[0].replace(/-/g, '');
+    // Generate unique_id (format: CST_XXXX where XXXX is 4 dynamic digits)
     const randomSuffix = Math.floor(1000 + Math.random() * 9000); // 4-digit random number
-    const uniqueId = `CUST-${datePrefix}-${randomSuffix}`;
+    const uniqueId = `CST_${randomSuffix}`;
 
     // Build insert data
     const insertData: any = {
@@ -109,6 +186,7 @@ export async function POST(request: NextRequest) {
       vehicle_type: vehicle_type || 'car',
       status: status || 'waiting',
       entry_time: new Date().toISOString(),
+      admin_id: session.user.id, // Link customer to admin
     };
 
     // Add optional fields only if they have values
@@ -193,14 +271,21 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // Handle column not found errors (like missing car_type, bike_type, etc.)
-      if (error.code === '42703' || error.message.includes('column') || error.message.includes('does not exist')) {
+      // Handle column not found errors (PGRST204 is PostgREST error for missing column)
+      if (error.code === 'PGRST204' || error.code === '42703' || error.message.includes('column') || error.message.includes('does not exist')) {
+        const missingColumn = error.message.includes('admin_id') 
+          ? 'admin_id (required for subscription system)'
+          : error.message.includes('car_type') || error.message.includes('bike_type')
+          ? 'vehicle-specific columns (car_type, car_name, car_year, car_color, bike_type, bike_name, bike_year, bike_color, other_details)'
+          : 'one or more required columns';
+        
         return NextResponse.json(
           { 
-            error: 'Database schema mismatch. Missing vehicle-specific columns.',
-            details: 'Please run the updated supabase-customers-table.sql migration to add the new columns (car_type, car_name, car_year, car_color, bike_type, bike_name, bike_year, bike_color, other_details).',
+            error: 'Database schema mismatch. Missing required columns.',
+            details: `The Customers table is missing: ${missingColumn}`,
+            solution: 'Run the migration file: supabase/migrations/add_admin_id_to_customers.sql in your Supabase SQL Editor',
             supabaseError: error.message,
-            hint: 'Run the SQL migration file in your Supabase SQL Editor to add the missing columns.'
+            hint: 'Go to Supabase Dashboard → SQL Editor → Run the migration file to add missing columns.'
           },
           { status: 500 }
         );
@@ -215,11 +300,12 @@ export async function POST(request: NextRequest) {
         const adminSupabase = createAdminClient();
         const { data: adminProfile } = await adminSupabase
           .from('profiles')
-          .select('id, email')
+          .select('id, email, first_name, last_name, full_name')
           .eq('id', session.user.id)
           .single();
 
         if (adminProfile?.email && adminProfile?.id) {
+          // Send customer creation notification
           await sendCustomerNotificationEmail(
             adminProfile.id,
             adminProfile.email,
@@ -233,6 +319,42 @@ export async function POST(request: NextRequest) {
               status: customer.status || undefined,
             }
           );
+
+          // Check if we need to send limit warning email (second last customer)
+          const newCustomerCount = usage.customers + 1; // After adding this customer
+          let maxLimit: number;
+          let planType: string | null = null;
+
+          if (!subscriptionCheck.subscription) {
+            maxLimit = 5; // No plan limit
+          } else {
+            planType = subscriptionCheck.subscription.planType;
+            const limits = getPlanLimits(planType as PlanType);
+            maxLimit = limits.maxCustomers || Infinity;
+          }
+
+          // Send warning if at second last customer (one before limit)
+          if (maxLimit !== Infinity && newCustomerCount === maxLimit - 1) {
+            const adminName = adminProfile.full_name || 
+                            (adminProfile.first_name && adminProfile.last_name 
+                              ? `${adminProfile.first_name} ${adminProfile.last_name}` 
+                              : adminProfile.first_name || 'Admin');
+            
+            try {
+              await sendCustomerLimitWarningEmail(
+                adminProfile.id,
+                adminProfile.email,
+                adminName,
+                newCustomerCount,
+                maxLimit,
+                planType
+              );
+              console.log(`📧 Customer limit warning email sent to ${adminProfile.email}`);
+            } catch (warningError) {
+              console.error('Error sending customer limit warning email:', warningError);
+              // Don't fail the request if warning email fails
+            }
+          }
         }
       } catch (emailError) {
         console.error('Error sending customer notification email:', emailError);

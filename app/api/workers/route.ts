@@ -1,6 +1,8 @@
 import { createClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
 import { NextRequest } from 'next/server';
+import { checkSubscriptionAccess, getUsageCounts } from '@/lib/utils/subscription-helpers';
+import { isWithinLimit, getPlanLimits } from '@/lib/utils/plan-limits';
 
 // GET - Fetch all workers
 export async function GET(request: NextRequest) {
@@ -83,6 +85,35 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: 'Worker name is required' },
         { status: 400 }
+      );
+    }
+
+    // Check subscription access
+    const subscriptionCheck = await checkSubscriptionAccess(session.user.id);
+    if (!subscriptionCheck.allowed) {
+      return NextResponse.json(
+        { error: subscriptionCheck.error || 'Subscription required' },
+        { status: 403 }
+      );
+    }
+
+    // Check worker limit (if applicable)
+    const usage = await getUsageCounts(session.user.id);
+    const planType = subscriptionCheck.subscription?.planType || 'starter';
+    const limits = getPlanLimits(planType);
+
+    if (!isWithinLimit(planType, 'maxWorkers', usage.workers)) {
+      const maxWorkers = limits.maxWorkers;
+      return NextResponse.json(
+        { 
+          error: maxWorkers 
+            ? `You've reached the worker limit (${maxWorkers}) for your plan. Please upgrade.`
+            : 'Unable to create worker. Please upgrade your plan.',
+          limitReached: true,
+          currentCount: usage.workers,
+          maxLimit: maxWorkers,
+        },
+        { status: 403 }
       );
     }
 

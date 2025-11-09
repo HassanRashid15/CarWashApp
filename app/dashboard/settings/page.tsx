@@ -16,6 +16,7 @@ import { User } from '@supabase/supabase-js';
 import { motion } from 'framer-motion';
 import { PlaceholderChart } from '@/components/dashboard/placeholder-chart';
 import { X, Pencil, Loader2, Check, XCircle, Shield, Trash2, AlertTriangle, Monitor, Sun, Moon } from 'lucide-react';
+import { BillingTab } from '@/components/subscription/billing-tab';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useTheme } from 'next-themes';
 
@@ -677,9 +678,10 @@ export default function SettingsPage() {
         <Separator />
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full max-w-md grid-cols-2">
+          <TabsList className="grid w-full max-w-md grid-cols-3">
             <TabsTrigger value="profile">Profile</TabsTrigger>
             <TabsTrigger value="settings">Settings</TabsTrigger>
+            <TabsTrigger value="billing">Billing</TabsTrigger>
           </TabsList>
 
           <TabsContent value="profile" className="space-y-6 mt-6">
@@ -1219,6 +1221,10 @@ export default function SettingsPage() {
           </motion.div>
 
             </div>
+          </TabsContent>
+
+          <TabsContent value="billing" className="space-y-6 mt-6">
+            <BillingTab />
           </TabsContent>
         </Tabs>
 

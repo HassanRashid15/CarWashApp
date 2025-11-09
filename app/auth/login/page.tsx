@@ -22,7 +22,15 @@ function LoginContent() {
         setShowCodeModal(true);
       }
     }
-  }, [isAdmin]);
+    
+    // Store plan from URL if present
+    const planParam = searchParams.get('plan');
+    const redirectParam = searchParams.get('redirect');
+    if (planParam && redirectParam === 'checkout') {
+      sessionStorage.setItem('selectedPlan', planParam);
+      console.log('Stored plan from URL:', planParam);
+    }
+  }, [isAdmin, searchParams]);
 
   const handleCodeValid = (code: string) => {
     setAdminCode(code);

@@ -1,6 +1,8 @@
 import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { sendQueueNotificationEmail } from '@/lib/emails/notification-emails';
+import { checkSubscriptionAccess } from '@/lib/utils/subscription-helpers';
+import { hasFeature } from '@/lib/utils/plan-limits';
 
 export async function GET(request: NextRequest) {
   try {
@@ -23,7 +25,7 @@ export async function GET(request: NextRequest) {
       .from('Queue')
       .select(`
         *,
-        customer:Customers(id, name, phone, vehicle_number, vehicle_type),
+        customer:Customers(id, name, phone, vehicle_number, vehicle_type, unique_id, car_name, car_year, bike_name, bike_year),
         worker:Workers(id, name, employee_id)
       `)
       .order('queue_number', { ascending: true })
@@ -60,6 +62,31 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
+      );
+    }
+
+    // Check subscription for advanced queue system
+    const subscriptionCheck = await checkSubscriptionAccess(session.user.id);
+    if (!subscriptionCheck.allowed || !subscriptionCheck.subscription) {
+      return NextResponse.json(
+        { 
+          error: 'Subscription required',
+          details: 'Advanced Queue System requires a subscription plan.'
+        },
+        { status: 403 }
+      );
+    }
+
+    const hasAdvancedQueue = hasFeature(subscriptionCheck.subscription.planType, 'advancedQueueSystem');
+    if (!hasAdvancedQueue) {
+      return NextResponse.json(
+        { 
+          error: 'Feature not available',
+          details: 'Advanced Queue System is only available in Professional or Enterprise plans. Please upgrade to access this feature.',
+          showUpgradeModal: true,
+          requiredFeature: 'advancedQueueSystem'
+        },
+        { status: 403 }
       );
     }
 
@@ -184,7 +211,7 @@ export async function POST(request: NextRequest) {
       .insert([insertData])
       .select(`
         *,
-        customer:Customers(id, name, phone, vehicle_number, vehicle_type),
+        customer:Customers(id, name, phone, vehicle_number, vehicle_type, unique_id, car_name, car_year, bike_name, bike_year),
         worker:Workers(id, name, employee_id)
       `)
       .single();
