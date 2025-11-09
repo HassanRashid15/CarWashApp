@@ -62,7 +62,68 @@ export function LoginForm({ isAdmin = false, adminCode = null }: LoginFormProps)
         }
       }
 
-      router.push('/dashboard');
+      // Check if user was selecting a plan before login
+      const selectedPlan = typeof window !== 'undefined' ? sessionStorage.getItem('selectedPlan') : null;
+      const redirectParam = searchParams.get('redirect');
+      const planParam = searchParams.get('plan');
+      
+      console.log('Login redirect check:', { selectedPlan, redirectParam, planParam, isAdmin });
+      
+      // If plan was selected or in URL, proceed to checkout
+      // Check for redirect=checkout OR if plan is in URL/storage (more flexible)
+      const planType = selectedPlan || planParam;
+      const shouldRedirectToCheckout = planType && (redirectParam === 'checkout' || planParam);
+      
+      if (shouldRedirectToCheckout) {
+        // Clear stored plan
+        if (typeof window !== 'undefined') {
+          sessionStorage.removeItem('selectedPlan');
+        }
+        
+        // Create checkout session
+        try {
+          console.log('Creating checkout for plan:', planType);
+          const response = await fetch('/api/subscriptions/create-checkout', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ planType }),
+          });
+          
+          if (response.ok) {
+            const data = await response.json();
+            console.log('Checkout response:', data);
+            if (data.checkoutUrl) {
+              // Use window.location for external redirect
+              window.location.href = data.checkoutUrl;
+              return;
+            } else {
+              console.error('No checkoutUrl in response:', data);
+              setError('Failed to get checkout URL. Please try again.');
+              return;
+            }
+          } else {
+            const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+            console.error('Checkout error:', errorData);
+            setError(errorData.error || 'Failed to create checkout session');
+            return;
+          }
+        } catch (error) {
+          console.error('Error creating checkout:', error);
+          setError('Failed to create checkout session. Please try again.');
+          return;
+        }
+      } else {
+        console.log('Not redirecting to checkout:', { planType, redirectParam, planParam });
+      }
+
+      // Default redirect to home page (unless plan is selected, then go to checkout)
+      const nextParam = searchParams.get('next');
+      if (nextParam) {
+        router.push(nextParam);
+      } else {
+        // Redirect to home page instead of dashboard
+        router.push('/');
+      }
     } catch (error) {
       setError(
         error instanceof Error ? error.message : 'Invalid email or password'

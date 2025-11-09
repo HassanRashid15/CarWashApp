@@ -8,6 +8,9 @@ import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Loader2, Plus, Edit2, Trash2, X, Check, ListOrdered, DollarSign, Clock, User, Users, AlertCircle, Eye, Hash } from 'lucide-react';
+import { FeatureRestrictionOverlay } from '@/components/subscription/feature-restriction-overlay';
+import { hasFeature, getPlanLimits } from '@/lib/utils/plan-limits';
+import { FeedbackModal } from '@/components/feedback/feedback-modal';
 
 type QueueStatus = 'waiting' | 'washing' | 'completed' | 'cancelled';
 type ServiceType = 'wash' | 'detailing' | 'wax' | 'interior' | 'full_service';
@@ -61,6 +64,11 @@ interface QueueEntry {
     phone?: string | null;
     vehicle_number?: string | null;
     vehicle_type?: string | null;
+    unique_id?: string;
+    car_name?: string;
+    car_year?: string;
+    bike_name?: string;
+    bike_year?: string;
   } | null;
   worker?: {
     id: string;
@@ -92,8 +100,13 @@ export default function QueuePage() {
   const [success, setSuccess] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
+  const [showFeedbackModal, setShowFeedbackModal] = useState(false);
+  const [feedbackQueueEntry, setFeedbackQueueEntry] = useState<QueueEntry | null>(null);
   const [selectedEntry, setSelectedEntry] = useState<QueueEntry | null>(null);
   const [editingEntry, setEditingEntry] = useState<QueueEntry | null>(null);
+  const [subscription, setSubscription] = useState<any>(null);
+  const [usage, setUsage] = useState<{ customers: number; workers: number; products: number } | null>(null);
+  const [checkingSubscription, setCheckingSubscription] = useState(true);
   const [formData, setFormData] = useState({
     customer_id: '',
     service_type: 'wash' as ServiceType,
@@ -108,8 +121,29 @@ export default function QueuePage() {
   const [modalError, setModalError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchData();
+    fetchSubscription();
   }, []);
+
+  useEffect(() => {
+    if (!checkingSubscription) {
+      fetchData();
+    }
+  }, [checkingSubscription]);
+
+  const fetchSubscription = async () => {
+    try {
+      const response = await fetch('/api/subscriptions');
+      if (response.ok) {
+        const data = await response.json();
+        setSubscription(data.subscription);
+        setUsage(data.usage);
+      }
+    } catch (error) {
+      console.error('Error fetching subscription:', error);
+    } finally {
+      setCheckingSubscription(false);
+    }
+  };
 
   const fetchData = async () => {
     await Promise.all([fetchQueue(), fetchCustomers(), fetchWorkers()]);
@@ -203,6 +237,11 @@ export default function QueuePage() {
         throw new Error(data.error || 'Failed to save queue entry');
       }
 
+      const result = await response.json();
+      const updatedEntry = result.queueEntry;
+      const wasCompleted = formData.status === 'completed';
+      const wasPreviouslyCompleted = editingEntry?.status === 'completed';
+
       setSuccess(editingEntry ? 'Queue entry updated successfully' : 'Queue entry added successfully');
       setFormData({
         customer_id: '',
@@ -218,6 +257,12 @@ export default function QueuePage() {
       setShowModal(false);
       setEditingEntry(null);
       await fetchQueue();
+      
+      // Show feedback modal if status changed to completed
+      if (wasCompleted && !wasPreviouslyCompleted && updatedEntry) {
+        setFeedbackQueueEntry(updatedEntry);
+        setShowFeedbackModal(true);
+      }
       
       setTimeout(() => setSuccess(null), 3000);
     } catch (err) {
@@ -355,6 +400,51 @@ export default function QueuePage() {
         return type || '—';
     }
   };
+
+  // Check if advanced queue system feature is available based on customer count and subscription
+  const isQueueLocked = (): boolean => {
+    if (checkingSubscription || !usage) return true; // Lock while loading
+    
+    // If no subscription, check customer count
+    if (!subscription || !subscription.planType) {
+      const maxCustomers = 5; // No plan limit
+      return usage.customers >= maxCustomers;
+    }
+
+    // If has subscription, check feature availability
+    const hasFeatureAccess = hasFeature(subscription.planType, 'advancedQueueSystem');
+    if (!hasFeatureAccess) {
+      // If feature not available in plan, check customer count
+      const limits = getPlanLimits(subscription.planType);
+      const maxCustomers = limits.maxCustomers;
+      if (maxCustomers === null) return false; // Unlimited
+      return usage.customers >= maxCustomers;
+    }
+
+    // Feature is available in plan, but check customer limit
+    const limits = getPlanLimits(subscription.planType);
+    const maxCustomers = limits.maxCustomers;
+    if (maxCustomers === null) return false; // Unlimited
+    return usage.customers >= maxCustomers;
+  };
+
+  if (checkingSubscription) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (isQueueLocked()) {
+    return (
+      <FeatureRestrictionOverlay
+        featureName="Advanced Queue System"
+        requiredPlan="Professional"
+        description="Advanced Queue System provides enhanced queue management features including real-time updates, advanced filtering, and detailed analytics. You've reached your customer limit. Upgrade your plan to continue using this feature."
+      />
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -1041,6 +1131,22 @@ export default function QueuePage() {
             </tbody>
           </table>
         </div>
+      )}
+
+      {/* Feedback Modal */}
+      {feedbackQueueEntry && (
+        <FeedbackModal
+          isOpen={showFeedbackModal}
+          onClose={() => {
+            setShowFeedbackModal(false);
+            setFeedbackQueueEntry(null);
+          }}
+          queueEntry={feedbackQueueEntry}
+          onFeedbackSubmitted={() => {
+            setShowFeedbackModal(false);
+            setFeedbackQueueEntry(null);
+          }}
+        />
       )}
     </div>
   );

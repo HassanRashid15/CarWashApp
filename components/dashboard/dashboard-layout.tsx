@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -10,7 +10,9 @@ import { UserMenu } from '@/components/dashboard/user-menu';
 import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
 import { User } from '@supabase/supabase-js';
-import { Droplet } from 'lucide-react';
+import { Droplet, Lock, CreditCard } from 'lucide-react';
+import { hasFeature, getPlanLimits } from '@/lib/utils/plan-limits';
+import { FeatureLockModal } from '@/components/subscription/feature-lock-modal';
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -30,6 +32,12 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
+  const [subscription, setSubscription] = useState<any>(null);
+  const [usage, setUsage] = useState<{ customers: number; workers: number; products: number } | null>(null);
+  const [lockModal, setLockModal] = useState<{ isOpen: boolean; featureName: string; requiredPlan?: string }>({
+    isOpen: false,
+    featureName: '',
+  });
   const router = useRouter();
 
   // Close sidebar on mobile and tablet by default
@@ -116,7 +124,28 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
 
   useEffect(() => {
     fetchProfile();
+    fetchSubscription();
   }, [router]);
+
+  const fetchSubscription = async () => {
+    try {
+      const response = await fetch('/api/subscriptions');
+      
+      if (response.status === 429) {
+        // Rate limited - use cached data if available, don't retry immediately
+        console.warn('Rate limited on subscription fetch');
+        return;
+      }
+      
+      if (response.ok) {
+        const data = await response.json();
+        setSubscription(data.subscription);
+        setUsage(data.usage);
+      }
+    } catch (error) {
+      console.error('Error fetching subscription:', error);
+    }
+  };
 
   // Listen for profile update events
   useEffect(() => {
@@ -152,6 +181,43 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
     if (isMobile) {
       setIsSidebarOpen(false);
     }
+  };
+
+  // Check if feature should be locked based on customer count and subscription
+  const isFeatureLocked = (feature: 'advancedQueueSystem' | 'paymentProcessing' | 'monitoring' | 'customerFeedback'): boolean => {
+    // If no subscription, check customer count
+    if (!subscription || !subscription.planType) {
+      if (!usage) return true; // Lock if we don't have usage data yet
+      const maxCustomers = 5; // No plan limit
+      // Allow access if below limit, lock if at or above limit
+      return usage.customers >= maxCustomers;
+    }
+
+    // If has subscription, check feature availability
+    const hasFeatureAccess = hasFeature(subscription.planType, feature);
+    if (!hasFeatureAccess) {
+      // If feature not available in plan, check customer count
+      if (!usage) return true;
+      const limits = getPlanLimits(subscription.planType);
+      const maxCustomers = limits.maxCustomers;
+      
+      // If unlimited, allow access
+      if (maxCustomers === null) return false;
+      
+      // Lock if at or above customer limit
+      return usage.customers >= maxCustomers;
+    }
+
+    // Feature is available in plan, but check customer limit
+    if (!usage) return false;
+    const limits = getPlanLimits(subscription.planType);
+    const maxCustomers = limits.maxCustomers;
+    
+    // If unlimited, allow access
+    if (maxCustomers === null) return false;
+    
+    // Lock if at or above customer limit
+    return usage.customers >= maxCustomers;
   };
 
   if (isLoading) {
@@ -276,6 +342,9 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
             label="Queue System"
             isCollapsed={!isSidebarOpen}
             onNavigate={handleMobileNavigate}
+            isLocked={isFeatureLocked('advancedQueueSystem')}
+            requiredFeature="advancedQueueSystem"
+            onLockClick={(featureName, requiredPlan) => setLockModal({ isOpen: true, featureName, requiredPlan })}
           />
           <SidebarItem
             href="/dashboard/payments"
@@ -283,7 +352,54 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
             label="Payments"
             isCollapsed={!isSidebarOpen}
             onNavigate={handleMobileNavigate}
+            isLocked={isFeatureLocked('paymentProcessing')}
+            requiredFeature="paymentProcessing"
+            onLockClick={(featureName, requiredPlan) => setLockModal({ isOpen: true, featureName, requiredPlan })}
           />
+          <SidebarItem
+            href="/dashboard/feedback"
+            icon={<MessageSquareIcon className="h-5 w-5" />}
+            label="Feedback"
+            isCollapsed={!isSidebarOpen}
+            onNavigate={handleMobileNavigate}
+            isLocked={isFeatureLocked('customerFeedback')}
+            requiredFeature="customerFeedback"
+            onLockClick={(featureName, requiredPlan) => setLockModal({ isOpen: true, featureName, requiredPlan })}
+          />
+         
+          {/* Super Admin Only: Users Management, Contact Queries, Analytics, Subscriptions */}
+          {profile?.role === 'super_admin' && (
+            <>
+              <SidebarItem
+                href="/dashboard/users"
+                icon={<UsersIcon className="h-5 w-5" />}
+                label="Users"
+                isCollapsed={!isSidebarOpen}
+                onNavigate={handleMobileNavigate}
+              />
+              <SidebarItem
+                href="/dashboard/contact-queries"
+                icon={<InboxIcon className="h-5 w-5" />}
+                label="Contact Queries"
+                isCollapsed={!isSidebarOpen}
+                onNavigate={handleMobileNavigate}
+              />
+              <SidebarItem
+                href="/dashboard/analytics"
+                icon={<BarChartIcon className="h-5 w-5" />}
+                label="Analytics & Reports"
+                isCollapsed={!isSidebarOpen}
+                onNavigate={handleMobileNavigate}
+              />
+              <SidebarItem
+                href="/dashboard/subscriptions"
+                icon={<CreditCard className="h-5 w-5" />}
+                label="Subscriptions"
+                isCollapsed={!isSidebarOpen}
+                onNavigate={handleMobileNavigate}
+              />
+            </>
+          )}
          
                <SidebarItem
             href="/dashboard/settings"
@@ -423,6 +539,15 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
         {/* Content */}
         <main className="flex-1 overflow-auto p-6">{children}</main>
       </div>
+
+      {/* Feature Lock Modal */}
+      <FeatureLockModal
+        isOpen={lockModal.isOpen}
+        onClose={() => setLockModal({ isOpen: false, featureName: '' })}
+        featureName={lockModal.featureName}
+        requiredPlan={lockModal.requiredPlan}
+        description={`Unlock this feature by purchasing a subscription plan. Upgrade to access ${lockModal.featureName} and unlock advanced functionality.`}
+      />
     </div>
   );
 }
@@ -433,21 +558,60 @@ interface SidebarItemProps {
   label: string;
   isCollapsed: boolean;
   onNavigate?: () => void;
+  isLocked?: boolean;
+  requiredFeature?: string;
+  onLockClick?: (featureName: string, requiredPlan?: string) => void;
 }
 
-function SidebarItem({ href, icon, label, isCollapsed, onNavigate }: SidebarItemProps) {
+function SidebarItem({ href, icon, label, isCollapsed, onNavigate, isLocked, requiredFeature, onLockClick }: SidebarItemProps) {
+  const pathname = usePathname();
+  const isActive = pathname === href || (href !== '/dashboard' && pathname.startsWith(href));
+  
+  const handleClick = (e: React.MouseEvent) => {
+    if (isLocked) {
+      e.preventDefault();
+      // Show lock modal instead of redirecting
+      const planNames: Record<string, string> = {
+        advancedQueueSystem: 'Professional',
+        paymentProcessing: 'Professional',
+        monitoring: 'Professional',
+        customerFeedback: 'Professional',
+        advancedAnalytics: 'Professional',
+        multiLocationSupport: 'Enterprise',
+      };
+      const requiredPlan = requiredFeature ? planNames[requiredFeature] || 'Professional' : 'Professional';
+      onLockClick?.(label, requiredPlan);
+      return;
+    }
+    onNavigate?.();
+  };
+
   return (
     <Link
-      href={href}
-      onClick={onNavigate}
-      className={`flex items-center rounded-md hover:bg-accent group transition-colors ${
+      href={isLocked ? '/dashboard/settings?tab=billing' : href}
+      onClick={handleClick}
+      className={`flex items-center rounded-md group transition-all duration-200 relative cursor-pointer ${
         isCollapsed 
           ? 'justify-center p-2 w-full' 
           : 'justify-start p-2'
+      } ${
+        isActive && !isLocked
+          ? 'bg-primary/10 text-primary hover:bg-primary/15'
+          : isLocked
+          ? 'opacity-75 cursor-not-allowed hover:bg-accent/50'
+          : 'hover:bg-accent text-muted-foreground hover:text-foreground'
       }`}
+      title={isLocked ? `Upgrade to unlock ${label}` : undefined}
     >
-      <div className={`${isCollapsed ? '' : 'mr-2'} text-muted-foreground group-hover:text-foreground flex items-center justify-center`}>
+      <div className={`${isCollapsed ? '' : 'mr-2'} flex items-center justify-center relative transition-colors ${
+        isActive && !isLocked
+          ? 'text-primary'
+          : 'text-muted-foreground group-hover:text-foreground'
+      }`}>
         {icon}
+        {isLocked && (
+          <Lock className="h-3 w-3 text-amber-500 absolute -top-0.5 -right-0.5" />
+        )}
       </div>
       <AnimatePresence mode="wait">
         {!isCollapsed && (
@@ -456,9 +620,16 @@ function SidebarItem({ href, icon, label, isCollapsed, onNavigate }: SidebarItem
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
-            className="text-muted-foreground group-hover:text-foreground"
+            className={`flex items-center gap-1 transition-colors ${
+              isActive && !isLocked
+                ? 'text-primary font-medium'
+                : 'text-muted-foreground group-hover:text-foreground'
+            }`}
           >
             {label}
+            {isLocked && (
+              <Lock className="h-3 w-3 text-amber-500" />
+            )}
           </motion.span>
         )}
       </AnimatePresence>
@@ -690,6 +861,88 @@ function ProductIcon(props: React.SVGProps<SVGSVGElement>) {
       <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z" />
       <path d="M3 6h18" />
       <path d="M16 10a4 4 0 0 1-8 0" />
+    </svg>
+  );
+}
+
+function UsersIcon(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      {...props}
+      xmlns="http://www.w3.org/2000/svg"
+      width="24"
+      height="24"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+      <circle cx="9" cy="7" r="4" />
+      <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+      <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+    </svg>
+  );
+}
+
+function InboxIcon(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      {...props}
+      xmlns="http://www.w3.org/2000/svg"
+      width="24"
+      height="24"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <polyline points="22 12 16 12 14 15 10 15 8 12 2 12" />
+      <path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" />
+    </svg>
+  );
+}
+
+function BarChartIcon(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      {...props}
+      xmlns="http://www.w3.org/2000/svg"
+      width="24"
+      height="24"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <line x1="12" x2="12" y1="20" y2="10" />
+      <line x1="18" x2="18" y1="20" y2="4" />
+      <line x1="6" x2="6" y1="20" y2="16" />
+    </svg>
+  );
+}
+
+function MessageSquareIcon(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      {...props}
+      xmlns="http://www.w3.org/2000/svg"
+      width="24"
+      height="24"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
     </svg>
   );
 }

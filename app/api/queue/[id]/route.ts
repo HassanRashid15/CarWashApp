@@ -1,6 +1,8 @@
 import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { sendQueueNotificationEmail, sendPaymentNotificationEmail } from '@/lib/emails/notification-emails';
+import { checkSubscriptionAccess } from '@/lib/utils/subscription-helpers';
+import { hasFeature } from '@/lib/utils/plan-limits';
 
 export async function PUT(
   request: NextRequest,
@@ -21,6 +23,31 @@ export async function PUT(
       );
     }
 
+    // Check subscription for advanced queue system
+    const subscriptionCheck = await checkSubscriptionAccess(session.user.id);
+    if (!subscriptionCheck.allowed || !subscriptionCheck.subscription) {
+      return NextResponse.json(
+        { 
+          error: 'Subscription required',
+          details: 'Advanced Queue System requires a subscription plan.'
+        },
+        { status: 403 }
+      );
+    }
+
+    const hasAdvancedQueue = hasFeature(subscriptionCheck.subscription.planType, 'advancedQueueSystem');
+    if (!hasAdvancedQueue) {
+      return NextResponse.json(
+        { 
+          error: 'Feature not available',
+          details: 'Advanced Queue System is only available in Professional or Enterprise plans. Please upgrade to access this feature.',
+          showUpgradeModal: true,
+          requiredFeature: 'advancedQueueSystem'
+        },
+        { status: 403 }
+      );
+    }
+
     const body = await request.json();
     const { 
       customer_id,
@@ -36,6 +63,22 @@ export async function PUT(
       end_time,
       remarks
     } = body;
+
+    // Check payment processing feature if payment fields are being updated
+    if (payment_status !== undefined || payment_method !== undefined || bank_name !== undefined) {
+      const hasPaymentProcessing = hasFeature(subscriptionCheck.subscription.planType, 'paymentProcessing');
+      if (!hasPaymentProcessing) {
+        return NextResponse.json(
+          { 
+            error: 'Feature not available',
+            details: 'Payment Processing is only available in Professional or Enterprise plans. Please upgrade to access this feature.',
+            showUpgradeModal: true,
+            requiredFeature: 'paymentProcessing'
+          },
+          { status: 403 }
+        );
+      }
+    }
     const { id } = await params;
 
     // Validate service_type if provided
@@ -154,7 +197,7 @@ export async function PUT(
       .eq('id', id)
       .select(`
         *,
-        customer:Customers(id, name, phone, vehicle_number, vehicle_type),
+        customer:Customers(id, name, phone, vehicle_number, vehicle_type, unique_id, car_name, car_year, bike_name, bike_year),
         worker:Workers(id, name, employee_id)
       `)
       .single();
@@ -286,6 +329,31 @@ export async function DELETE(
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
+      );
+    }
+
+    // Check subscription for advanced queue system
+    const subscriptionCheck = await checkSubscriptionAccess(session.user.id);
+    if (!subscriptionCheck.allowed || !subscriptionCheck.subscription) {
+      return NextResponse.json(
+        { 
+          error: 'Subscription required',
+          details: 'Advanced Queue System requires a subscription plan.'
+        },
+        { status: 403 }
+      );
+    }
+
+    const hasAdvancedQueue = hasFeature(subscriptionCheck.subscription.planType, 'advancedQueueSystem');
+    if (!hasAdvancedQueue) {
+      return NextResponse.json(
+        { 
+          error: 'Feature not available',
+          details: 'Advanced Queue System is only available in Professional or Enterprise plans. Please upgrade to access this feature.',
+          showUpgradeModal: true,
+          requiredFeature: 'advancedQueueSystem'
+        },
+        { status: 403 }
       );
     }
 

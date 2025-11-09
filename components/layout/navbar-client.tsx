@@ -133,18 +133,39 @@ export function NavbarClient({ initialRole }: NavbarClientProps) {
     }
 
     if (selectedRole === 'user') {
+      const handleLocationClick = (e: React.MouseEvent) => {
+        // Check if we're on the home page
+        if (window.location.pathname === '/') {
+          e.preventDefault();
+          // Scroll to contact section on home page
+          const locationSection = document.getElementById('contact');
+          if (locationSection) {
+            locationSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }
+        }
+        // If on another page, Link will handle navigation to /#contact
+      };
+
       return (
         <>
-          <Button variant="ghost" size={isMobile ? "default" : "sm"} className="flex items-center gap-2 w-full sm:w-auto">
-            <MapPin className="h-4 w-4" />
-            {isMobile && <span>Location</span>}
-            {!isMobile && <span className="hidden sm:inline">Location</span>}
-          </Button>
-          <Button size={isMobile ? "default" : "sm"} className="flex items-center gap-2 w-full sm:w-auto">
-            <Calendar className="h-4 w-4" />
-            {isMobile && <span>Book Now</span>}
-            {!isMobile && <span className="hidden sm:inline">Book Now</span>}
-          </Button>
+          <Link href="/#contact" onClick={handleLocationClick}>
+            <Button 
+              variant="ghost" 
+              size={isMobile ? "default" : "sm"} 
+              className="flex items-center gap-2 w-full sm:w-auto"
+            >
+              <MapPin className="h-4 w-4" />
+              {isMobile && <span>Location</span>}
+              {!isMobile && <span className="hidden sm:inline">Location</span>}
+            </Button>
+          </Link>
+          <Link href="/contact">
+            <Button size={isMobile ? "default" : "sm"} className="flex items-center gap-2 w-full sm:w-auto">
+              <Calendar className="h-4 w-4" />
+              {isMobile && <span>Book Now</span>}
+              {!isMobile && <span className="hidden sm:inline">Book Now</span>}
+            </Button>
+          </Link>
         </>
       );
     } else if (selectedRole === 'admin') {
@@ -163,19 +184,19 @@ export function NavbarClient({ initialRole }: NavbarClientProps) {
           />
         );
       }
-      // If admin is not logged in, show icon buttons
+      // If admin is not logged in, show buttons with text on desktop, icons on mobile
       return (
         <>
           <Link href="/auth/login?role=admin">
-            <Button variant="ghost" size={isMobile ? "default" : "sm"} className={isMobile ? "w-full justify-start" : "p-2"} title="Login">
-              <LogIn className="h-4 w-4" />
-              {isMobile && <span className="ml-2">Login</span>}
+            <Button variant="ghost" size={isMobile ? "default" : "sm"} className={isMobile ? "w-full justify-start" : ""} title="Login">
+              <LogIn className="h-4 w-4 lg:mr-2" />
+              {isMobile ? <span className="ml-2">Login</span> : <span className="hidden lg:inline">Login</span>}
             </Button>
           </Link>
           <Link href="/auth/signup?role=admin">
-            <Button size={isMobile ? "default" : "sm"} className={isMobile ? "w-full justify-start" : "p-2"} title="Get Started">
-              <UserPlus className="h-4 w-4" />
-              {isMobile && <span className="ml-2">Get Started</span>}
+            <Button size={isMobile ? "default" : "sm"} className={isMobile ? "w-full justify-start" : ""} title="Get Started">
+              <UserPlus className="h-4 w-4 lg:mr-2" />
+              {isMobile ? <span className="ml-2">Get Started</span> : <span className="hidden lg:inline">Get Started</span>}
             </Button>
           </Link>
         </>
@@ -185,14 +206,14 @@ export function NavbarClient({ initialRole }: NavbarClientProps) {
         <>
           <Link href="/auth/login">
             <Button variant="ghost" size={isMobile ? "default" : "sm"} className={isMobile ? "w-full justify-start" : ""}>
-              <LogIn className="h-4 w-4 sm:mr-2" />
-              {isMobile ? <span className="ml-2">Login</span> : <span className="hidden sm:inline">Login</span>}
+              <LogIn className="h-4 w-4 lg:mr-2" />
+              {isMobile ? <span className="ml-2">Login</span> : <span className="hidden lg:inline">Login</span>}
             </Button>
           </Link>
           <Link href="/auth/signup">
             <Button size={isMobile ? "default" : "sm"} className={isMobile ? "w-full justify-start" : ""}>
-              <UserPlus className="h-4 w-4 sm:mr-2" />
-              {isMobile ? <span className="ml-2">Get Started</span> : <span className="hidden sm:inline">Get Started</span>}
+              <UserPlus className="h-4 w-4 lg:mr-2" />
+              {isMobile ? <span className="ml-2">Get Started</span> : <span className="hidden lg:inline">Get Started</span>}
             </Button>
           </Link>
         </>
@@ -246,14 +267,34 @@ export function NavbarClient({ initialRole }: NavbarClientProps) {
                     <div className="flex flex-col space-y-3 pt-4 border-t border-border">
                       {selectedRole === 'user' && (
                         <>
-                          <Button variant="ghost" className="w-full justify-start" onClick={() => setIsMobileMenuOpen(false)}>
-                            <MapPin className="h-4 w-4 mr-2" />
-                            Location
-                          </Button>
-                          <Button className="w-full justify-start" onClick={() => setIsMobileMenuOpen(false)}>
-                            <Calendar className="h-4 w-4 mr-2" />
-                            Book Now
-                          </Button>
+                          <Link 
+                            href="/#contact" 
+                            className="w-full" 
+                            onClick={(e) => {
+                              setIsMobileMenuOpen(false);
+                              // Check if we're on the home page
+                              if (window.location.pathname === '/') {
+                                e.preventDefault();
+                                // Scroll to contact section on home page
+                                const locationSection = document.getElementById('contact');
+                                if (locationSection) {
+                                  locationSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                                }
+                              }
+                              // If on another page, Link will handle navigation to /#contact
+                            }}
+                          >
+                            <Button variant="ghost" className="w-full justify-start">
+                              <MapPin className="h-4 w-4 mr-2" />
+                              Location
+                            </Button>
+                          </Link>
+                          <Link href="/contact" className="w-full" onClick={() => setIsMobileMenuOpen(false)}>
+                            <Button className="w-full justify-start">
+                              <Calendar className="h-4 w-4 mr-2" />
+                              Book Now
+                            </Button>
+                          </Link>
                         </>
                       )}
                       {selectedRole === 'admin' && !user && (
@@ -343,13 +384,15 @@ export function NavbarClient({ initialRole }: NavbarClientProps) {
                 {selectedRole === 'admin' && !user && (
                   <>
                     <Link href="/auth/login?role=admin">
-                      <Button variant="ghost" size="sm" className="p-2" title="Login">
-                        <LogIn className="h-4 w-4" />
+                      <Button variant="ghost" size="sm" className="p-2 lg:px-3" title="Login">
+                        <LogIn className="h-4 w-4 lg:mr-2" />
+                        <span className="hidden lg:inline">Login</span>
                       </Button>
                     </Link>
                     <Link href="/auth/signup?role=admin">
-                      <Button size="sm" className="p-2" title="Get Started">
-                        <UserPlus className="h-4 w-4" />
+                      <Button size="sm" className="p-2 lg:px-3" title="Get Started">
+                        <UserPlus className="h-4 w-4 lg:mr-2" />
+                        <span className="hidden lg:inline">Get Started</span>
                       </Button>
                     </Link>
                   </>

@@ -138,6 +138,20 @@ export async function POST(request: NextRequest) {
         console.log('Profile:', newProfile);
         console.log('========================================');
 
+        // If admin, create trial subscription
+        if (isAdmin && newProfile) {
+          try {
+            const { createTrialSubscription } = await import('@/lib/utils/subscription-helpers');
+            const trialSubscription = await createTrialSubscription(userId);
+            if (trialSubscription) {
+              console.log('✅ Trial subscription created:', trialSubscription);
+            }
+          } catch (subscriptionError) {
+            console.error('Failed to create trial subscription:', subscriptionError);
+            // Don't fail the profile creation if subscription fails
+          }
+        }
+
         // If admin, also generate and store a screen code record
         if (isAdmin && newProfile) {
           const screenCode = generateScreenCode();

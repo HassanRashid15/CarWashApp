@@ -754,58 +754,38 @@ export function HomePageClient({ initialRole }: HomePageClientProps) {
               </motion.div>
               
               <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-12">
-                {[
-                  {
-                    name: 'Starter',
-                    price: '$29',
-                    period: '/month',
-                    features: [
-                      'Up to 50 customers',
-                      'Basic queue management',
-                      'Worker management',
-                      'Email support',
-                      'Basic reports'
-                    ],
-                    popular: false,
-                    gradient: 'from-gray-500 to-gray-600',
-                    icon: Shield
-                  },
-                  {
-                    name: 'Professional',
-                    price: '$79',
-                    period: '/month',
-                    features: [
-                      'Unlimited customers',
-                      'Advanced queue system',
-                      'Full worker management',
-                      'Inventory tracking',
-                      'Payment processing',
-                      'Priority support',
-                      'Advanced analytics'
-                    ],
-                    popular: true,
-                    gradient: 'from-blue-500 to-cyan-500',
-                    icon: Zap
-                  },
-                  {
-                    name: 'Enterprise',
-                    price: '$199',
-                    period: '/month',
-                    features: [
-                      'Everything in Professional',
-                      'Multi-location support',
-                      'Custom integrations',
-                      'Dedicated account manager',
-                      '24/7 phone support',
-                      'Custom reporting',
-                      'API access',
-                      'White-label options'
-                    ],
-                    popular: false,
-                    gradient: 'from-purple-500 to-pink-500',
-                    icon: Award
-                  }
-                ].map((subscription, index) => {
+                {(() => {
+                  const { PLAN_DESCRIPTIONS } = require('@/lib/utils/plan-descriptions');
+                  return [
+                    {
+                      name: PLAN_DESCRIPTIONS.starter.name,
+                      price: `$${PLAN_DESCRIPTIONS.starter.price}`,
+                      period: `/${PLAN_DESCRIPTIONS.starter.period}`,
+                      features: PLAN_DESCRIPTIONS.starter.features,
+                      popular: false,
+                      gradient: 'from-gray-500 to-gray-600',
+                      icon: Shield
+                    },
+                    {
+                      name: PLAN_DESCRIPTIONS.professional.name,
+                      price: `$${PLAN_DESCRIPTIONS.professional.price}`,
+                      period: `/${PLAN_DESCRIPTIONS.professional.period}`,
+                      features: PLAN_DESCRIPTIONS.professional.features,
+                      popular: true,
+                      gradient: 'from-blue-500 to-cyan-500',
+                      icon: Zap
+                    },
+                    {
+                      name: PLAN_DESCRIPTIONS.enterprise.name,
+                      price: `$${PLAN_DESCRIPTIONS.enterprise.price}`,
+                      period: `/${PLAN_DESCRIPTIONS.enterprise.period}`,
+                      features: PLAN_DESCRIPTIONS.enterprise.features,
+                      popular: false,
+                      gradient: 'from-purple-500 to-pink-500',
+                      icon: Award
+                    }
+                  ];
+                })().map((subscription, index) => {
                   const IconComponent = subscription.icon;
                   return (
                     <motion.div
@@ -839,7 +819,7 @@ export function HomePageClient({ initialRole }: HomePageClientProps) {
                         <span className="text-muted-foreground ml-2">{subscription.period}</span>
                       </div>
                       <ul className="space-y-3 mb-8 flex-grow">
-                        {subscription.features.map((feature, idx) => (
+                        {subscription.features.map((feature: string, idx: number) => (
                           <li key={idx} className="flex items-start">
                             <CheckCircle2 className="h-5 w-5 text-green-500 mr-3 mt-0.5 flex-shrink-0" />
                             <span className="text-muted-foreground">{feature}</span>
@@ -849,6 +829,59 @@ export function HomePageClient({ initialRole }: HomePageClientProps) {
                       <Button 
                         className={`w-full mt-auto ${subscription.popular ? '' : 'variant-outline'}`}
                         variant={subscription.popular ? 'default' : 'outline'}
+                        onClick={async () => {
+                          try {
+                            // Map plan names to plan types
+                            const planTypeMap: Record<string, 'starter' | 'professional' | 'enterprise'> = {
+                              'Starter': 'starter',
+                              'Professional': 'professional',
+                              'Enterprise': 'enterprise'
+                            };
+                            
+                            const planType = planTypeMap[subscription.name];
+                            if (!planType) {
+                              alert('Invalid plan selected');
+                              return;
+                            }
+
+                            // Check if user is authenticated
+                            const supabase = createClient();
+                            const { data: { session } } = await supabase.auth.getSession();
+                            
+                            if (!session?.user) {
+                              // Not logged in - store plan and redirect to login
+                              sessionStorage.setItem('selectedPlan', planType);
+                              window.location.href = `/auth/login?role=admin&plan=${planType}&redirect=checkout`;
+                              return;
+                            }
+
+                            // User is logged in, go directly to checkout
+                            const response = await fetch('/api/subscriptions/create-checkout', {
+                              method: 'POST',
+                              headers: {
+                                'Content-Type': 'application/json',
+                              },
+                              body: JSON.stringify({ planType }),
+                            });
+
+                            if (!response.ok) {
+                              const error = await response.json();
+                              throw new Error(error.error || 'Failed to create checkout session');
+                            }
+
+                            const { checkoutUrl } = await response.json();
+                            
+                            // Redirect to Stripe Checkout
+                            if (checkoutUrl) {
+                              window.location.href = checkoutUrl;
+                            } else {
+                              alert('Failed to create checkout session');
+                            }
+                          } catch (err) {
+                            console.error('Error creating checkout:', err);
+                            alert(err instanceof Error ? err.message : 'Failed to start checkout');
+                          }
+                        }}
                       >
                         {subscription.popular ? 'Get Started' : 'Choose Plan'}
                       </Button>

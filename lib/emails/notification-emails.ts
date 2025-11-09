@@ -1,5 +1,9 @@
 import { sendEmailWithBrevo } from '@/lib/email/brevo';
 import { shouldSendEmailNotification } from '@/lib/utils/email-helpers';
+import { getTrialExpirationEmailHTML } from './trial-expiration-email';
+import { getSubscriptionRenewalEmailHTML } from './subscription-renewal-email';
+import { getSubscription29DayReminderEmailHTML } from './subscription-29day-reminder-email';
+import { getCustomerLimitWarningEmailHTML } from './customer-limit-warning-email';
 
 /**
  * Send queue notification email
@@ -779,6 +783,160 @@ export async function sendSecurityAlertEmail(
     return { sent: true };
   } catch (error) {
     console.error('Error sending security alert email:', error);
+    return { sent: false, reason: 'Email sending failed' };
+  }
+}
+
+/**
+ * Send trial expiration warning email
+ */
+export async function sendTrialExpirationEmail(
+  adminId: string,
+  adminEmail: string,
+  adminName: string,
+  trialEndsAt: Date,
+  timeRemaining: string
+) {
+  try {
+    const subject = `⏰ Your Trial is Ending Soon - ${timeRemaining} Remaining`;
+    
+    const htmlContent = getTrialExpirationEmailHTML(
+      adminName,
+      trialEndsAt,
+      timeRemaining
+    );
+
+    await sendEmailWithBrevo({
+      to: adminEmail,
+      subject,
+      html: htmlContent,
+      from: {
+        name: 'CarWash App',
+        email: 'hassanrashid0018@gmail.com',
+      },
+    });
+
+    console.log(`✅ Trial expiration email sent to ${adminEmail} for admin ${adminId}`);
+    return { sent: true };
+  } catch (error) {
+    console.error('Error sending trial expiration email:', error);
+    return { sent: false, reason: 'Email sending failed' };
+  }
+}
+
+/**
+ * Send subscription renewal notification email
+ */
+export async function sendSubscriptionRenewalEmail(
+  adminId: string,
+  adminEmail: string,
+  adminName: string,
+  planType: string,
+  renewalDate: Date,
+  currentPeriodEnd: Date
+) {
+  try {
+    const subject = `🔄 Subscription Renewal Required - ${planType.charAt(0).toUpperCase() + planType.slice(1)} Plan`;
+    
+    const htmlContent = getSubscriptionRenewalEmailHTML(
+      adminName,
+      planType,
+      renewalDate,
+      currentPeriodEnd
+    );
+
+    await sendEmailWithBrevo({
+      to: adminEmail,
+      subject,
+      html: htmlContent,
+      from: {
+        name: 'CarWash App',
+        email: 'hassanrashid0018@gmail.com',
+      },
+    });
+
+    console.log(`✅ Subscription renewal email sent to ${adminEmail} for admin ${adminId}`);
+    return { sent: true };
+  } catch (error) {
+    console.error('Error sending subscription renewal email:', error);
+    return { sent: false, reason: 'Email sending failed' };
+  }
+}
+
+/**
+ * Send subscription 29th day reminder email
+ */
+export async function sendSubscription29DayReminderEmail(
+  adminId: string,
+  adminEmail: string,
+  adminName: string,
+  planType: string,
+  purchaseDate: Date,
+  renewalDate: Date
+) {
+  try {
+    const subject = `⏰ Subscription Renewal Reminder - ${planType.charAt(0).toUpperCase() + planType.slice(1)} Plan`;
+    
+    const htmlContent = getSubscription29DayReminderEmailHTML(
+      adminName,
+      planType,
+      purchaseDate,
+      renewalDate
+    );
+
+    await sendEmailWithBrevo({
+      to: adminEmail,
+      subject,
+      html: htmlContent,
+      from: {
+        name: 'CarWash App',
+        email: 'hassanrashid0018@gmail.com',
+      },
+    });
+
+    console.log(`✅ 29th day reminder email sent to ${adminEmail} for admin ${adminId}`);
+    return { sent: true };
+  } catch (error) {
+    console.error('Error sending 29th day reminder email:', error);
+    return { sent: false, reason: 'Email sending failed' };
+  }
+}
+
+/**
+ * Send customer limit warning email (when approaching limit - second last customer)
+ */
+export async function sendCustomerLimitWarningEmail(
+  adminId: string,
+  adminEmail: string,
+  adminName: string,
+  currentCount: number,
+  maxLimit: number,
+  planType: string | null
+) {
+  try {
+    const subject = `⚠️ Customer Limit Warning - ${currentCount}/${maxLimit} customers used`;
+    
+    const htmlContent = getCustomerLimitWarningEmailHTML(
+      adminName,
+      currentCount,
+      maxLimit,
+      planType
+    );
+
+    await sendEmailWithBrevo({
+      to: adminEmail,
+      subject,
+      html: htmlContent,
+      from: {
+        name: 'CarWash App',
+        email: 'hassanrashid0018@gmail.com',
+      },
+    });
+
+    console.log(`✅ Customer limit warning email sent to ${adminEmail} for admin ${adminId}`);
+    return { sent: true };
+  } catch (error) {
+    console.error('Error sending customer limit warning email:', error);
     return { sent: false, reason: 'Email sending failed' };
   }
 }
