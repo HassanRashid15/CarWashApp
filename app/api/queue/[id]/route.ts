@@ -23,26 +23,28 @@ export async function PUT(
       );
     }
 
-    // Check subscription for advanced queue system
+    // Check subscription for basic queue management
     const subscriptionCheck = await checkSubscriptionAccess(session.user.id);
-    if (!subscriptionCheck.allowed || !subscriptionCheck.subscription) {
+    if (!subscriptionCheck.allowed) {
       return NextResponse.json(
         { 
           error: 'Subscription required',
-          details: 'Advanced Queue System requires a subscription plan.'
+          details: subscriptionCheck.error || 'Queue management requires a subscription plan.'
         },
         { status: 403 }
       );
     }
 
-    const hasAdvancedQueue = hasFeature(subscriptionCheck.subscription.planType, 'advancedQueueSystem');
-    if (!hasAdvancedQueue) {
+    // If no subscription but allowed (trial/auto-created), use trial plan type
+    const planType = subscriptionCheck.subscription?.planType || 'trial';
+    
+    // Check for basic queue management (available in all plans)
+    const hasBasicQueue = hasFeature(planType, 'basicQueueManagement');
+    if (!hasBasicQueue) {
       return NextResponse.json(
         { 
           error: 'Feature not available',
-          details: 'Advanced Queue System is only available in Professional or Enterprise plans. Please upgrade to access this feature.',
-          showUpgradeModal: true,
-          requiredFeature: 'advancedQueueSystem'
+          details: 'Queue management is not available in your current plan.'
         },
         { status: 403 }
       );
@@ -64,9 +66,29 @@ export async function PUT(
       remarks
     } = body;
 
-    // Check payment processing feature if payment fields are being updated
-    if (payment_status !== undefined || payment_method !== undefined || bank_name !== undefined) {
-      const hasPaymentProcessing = hasFeature(subscriptionCheck.subscription.planType, 'paymentProcessing');
+    const { id } = await params;
+
+    // Get existing queue entry (fetch once, use for both payment check and update logic)
+    const { data: existingEntry } = await supabase
+      .from('Queue')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    if (!existingEntry) {
+      return NextResponse.json(
+        { error: 'Queue entry not found' },
+        { status: 404 }
+      );
+    }
+
+    // Only check payment processing if payment fields are actually being CHANGED
+    const isPaymentStatusChanging = payment_status !== undefined && payment_status !== existingEntry.payment_status;
+    const isPaymentMethodChanging = payment_method !== undefined && payment_method !== existingEntry.payment_method;
+    const isBankNameChanging = bank_name !== undefined && bank_name !== existingEntry.bank_name;
+    
+    if (isPaymentStatusChanging || isPaymentMethodChanging || isBankNameChanging) {
+      const hasPaymentProcessing = hasFeature(planType, 'paymentProcessing');
       if (!hasPaymentProcessing) {
         return NextResponse.json(
           { 
@@ -79,7 +101,6 @@ export async function PUT(
         );
       }
     }
-    const { id } = await params;
 
     // Validate service_type if provided
     if (service_type) {
@@ -116,24 +137,10 @@ export async function PUT(
 
     // Validate payment_method if provided
     const validPaymentMethods = ['cash', 'easypaisa', 'jazzcash', 'bank_transfer'];
-    if (body.payment_method && !validPaymentMethods.includes(body.payment_method)) {
+    if (payment_method && !validPaymentMethods.includes(payment_method)) {
       return NextResponse.json(
         { error: 'Invalid payment method. Must be: cash, easypaisa, jazzcash, or bank_transfer' },
         { status: 400 }
-      );
-    }
-
-    // Get existing queue entry to preserve certain fields
-    const { data: existingEntry } = await supabase
-      .from('Queue')
-      .select('*')
-      .eq('id', id)
-      .single();
-
-    if (!existingEntry) {
-      return NextResponse.json(
-        { error: 'Queue entry not found' },
-        { status: 404 }
       );
     }
 
@@ -332,26 +339,28 @@ export async function DELETE(
       );
     }
 
-    // Check subscription for advanced queue system
+    // Check subscription for basic queue management
     const subscriptionCheck = await checkSubscriptionAccess(session.user.id);
-    if (!subscriptionCheck.allowed || !subscriptionCheck.subscription) {
+    if (!subscriptionCheck.allowed) {
       return NextResponse.json(
         { 
           error: 'Subscription required',
-          details: 'Advanced Queue System requires a subscription plan.'
+          details: subscriptionCheck.error || 'Queue management requires a subscription plan.'
         },
         { status: 403 }
       );
     }
 
-    const hasAdvancedQueue = hasFeature(subscriptionCheck.subscription.planType, 'advancedQueueSystem');
-    if (!hasAdvancedQueue) {
+    // If no subscription but allowed (trial/auto-created), use trial plan type
+    const planType = subscriptionCheck.subscription?.planType || 'trial';
+    
+    // Check for basic queue management (available in all plans)
+    const hasBasicQueue = hasFeature(planType, 'basicQueueManagement');
+    if (!hasBasicQueue) {
       return NextResponse.json(
         { 
           error: 'Feature not available',
-          details: 'Advanced Queue System is only available in Professional or Enterprise plans. Please upgrade to access this feature.',
-          showUpgradeModal: true,
-          requiredFeature: 'advancedQueueSystem'
+          details: 'Queue management is not available in your current plan.'
         },
         { status: 403 }
       );

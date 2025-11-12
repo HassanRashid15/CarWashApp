@@ -30,6 +30,7 @@ interface FeedbackModalProps {
     } | null;
   };
   onFeedbackSubmitted?: () => void;
+  usePublicEndpoint?: boolean; // Use public API endpoint (no auth required)
 }
 
 export function FeedbackModal({
@@ -37,6 +38,7 @@ export function FeedbackModal({
   onClose,
   queueEntry,
   onFeedbackSubmitted,
+  usePublicEndpoint = false,
 }: FeedbackModalProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({
@@ -68,7 +70,10 @@ export function FeedbackModal({
     setIsSubmitting(true);
 
     try {
-      const response = await fetch('/api/feedback', {
+      // Use public endpoint if specified (for public queue page), otherwise use authenticated endpoint
+      const apiEndpoint = usePublicEndpoint ? '/api/feedback/public' : '/api/feedback';
+      
+      const response = await fetch(apiEndpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

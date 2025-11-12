@@ -1,12 +1,12 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Loader2, BarChart3, TrendingUp, Users, DollarSign, Calendar, AlertCircle, Download, Activity, AlertTriangle, CheckCircle2, Server } from 'lucide-react';
+import { Loader2, BarChart3, TrendingUp, Users, DollarSign, Calendar, AlertCircle, Download, Activity, AlertTriangle, CheckCircle2, Server, RefreshCw, Clock } from 'lucide-react';
 
 interface AnalyticsData {
   totalUsers: number;
@@ -22,19 +22,88 @@ interface AnalyticsData {
   userGrowth: Array<{ month: string; count: number }>;
 }
 
+// Animated Number Component
+function AnimatedNumber({ value, duration = 2000, formatter }: { value: number; duration?: number; formatter?: (val: number) => string }) {
+  const [displayValue, setDisplayValue] = useState(0);
+  const startTimeRef = useRef<number | null>(null);
+  const animationFrameRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    const startValue = displayValue;
+    const endValue = value;
+    const startTime = performance.now();
+    startTimeRef.current = startTime;
+
+    const animate = (currentTime: number) => {
+      if (startTimeRef.current === null) return;
+
+      const elapsed = currentTime - startTimeRef.current;
+      const progress = Math.min(elapsed / duration, 1);
+      
+      // Easing function for smooth animation
+      const easeOutQuart = 1 - Math.pow(1 - progress, 4);
+      const current = startValue + (endValue - startValue) * easeOutQuart;
+      
+      setDisplayValue(current);
+
+      if (progress < 1) {
+        animationFrameRef.current = requestAnimationFrame(animate);
+      } else {
+        setDisplayValue(endValue);
+      }
+    };
+
+    animationFrameRef.current = requestAnimationFrame(animate);
+
+    return () => {
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
+    };
+  }, [value, duration]);
+
+  const formattedValue = formatter ? formatter(Math.floor(displayValue)) : Math.floor(displayValue).toLocaleString();
+  
+  return <span>{formattedValue}</span>;
+}
+
 export default function AnalyticsPage() {
   const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [timeRange, setTimeRange] = useState<string>('30');
+  const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   useEffect(() => {
-    fetchAnalytics();
+    let isMounted = true;
+    
+    const fetchData = async () => {
+      await fetchAnalytics();
+    };
+    
+    fetchData();
+    
+    // Auto-refresh every 30 seconds
+    const interval = setInterval(() => {
+      if (isMounted) {
+        fetchAnalytics(true);
+      }
+    }, 30000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
   }, [timeRange]);
 
-  const fetchAnalytics = async () => {
+  const fetchAnalytics = async (silent: boolean = false) => {
     try {
-      setIsLoading(true);
+      if (!silent) {
+        setIsLoading(true);
+      } else {
+        setIsRefreshing(true);
+      }
       setError(null);
 
       const response = await fetch(`/api/analytics/reports?range=${timeRange}`);
@@ -46,11 +115,13 @@ export default function AnalyticsPage() {
 
       const data = await response.json();
       setAnalytics(data);
+      setLastUpdate(new Date());
     } catch (err) {
       console.error('Error fetching analytics:', err);
       setError(err instanceof Error ? err.message : 'Failed to fetch analytics');
     } finally {
       setIsLoading(false);
+      setIsRefreshing(false);
     }
   };
 
@@ -93,6 +164,12 @@ export default function AnalyticsPage() {
           <h1 className="text-3xl font-bold">Analytics & Reports</h1>
           <p className="text-muted-foreground mt-1">
             Comprehensive insights and performance metrics
+            {lastUpdate && (
+              <span className="ml-2 text-xs flex items-center gap-1">
+                <Clock className="h-3 w-3" />
+                Updated {lastUpdate.toLocaleTimeString()}
+              </span>
+            )}
           </p>
         </div>
         <div className="flex items-center gap-4">
@@ -108,6 +185,15 @@ export default function AnalyticsPage() {
               <SelectItem value="all">All time</SelectItem>
             </SelectContent>
           </Select>
+          <Button 
+            variant="outline" 
+            size="sm"
+            onClick={() => fetchAnalytics()}
+            disabled={isRefreshing}
+          >
+            <RefreshCw className={`h-4 w-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
           <Button variant="outline" size="sm">
             <Download className="h-4 w-4 mr-2" />
             Export Report
@@ -123,7 +209,9 @@ export default function AnalyticsPage() {
             <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{analytics.totalUsers}</div>
+            <div className="text-2xl font-bold">
+              <AnimatedNumber value={analytics.totalUsers} />
+            </div>
             <p className="text-xs text-muted-foreground mt-1">All registered users</p>
           </CardContent>
         </Card>
@@ -134,7 +222,9 @@ export default function AnalyticsPage() {
             <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{analytics.totalCustomers}</div>
+            <div className="text-2xl font-bold">
+              <AnimatedNumber value={analytics.totalCustomers} />
+            </div>
             <p className="text-xs text-muted-foreground mt-1">Across all admins</p>
           </CardContent>
         </Card>
@@ -145,7 +235,12 @@ export default function AnalyticsPage() {
             <DollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{formatCurrency(analytics.totalRevenue)}</div>
+            <div className="text-2xl font-bold">
+              <AnimatedNumber 
+                value={analytics.totalRevenue} 
+                formatter={(val) => formatCurrency(val)}
+              />
+            </div>
             <p className="text-xs text-muted-foreground mt-1">From subscriptions</p>
           </CardContent>
         </Card>
@@ -156,9 +251,11 @@ export default function AnalyticsPage() {
             <TrendingUp className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{analytics.activeSubscriptions}</div>
+            <div className="text-2xl font-bold">
+              <AnimatedNumber value={analytics.activeSubscriptions} />
+            </div>
             <p className="text-xs text-muted-foreground mt-1">
-              {analytics.pendingSubscriptions} pending approval
+              <AnimatedNumber value={analytics.pendingSubscriptions} /> pending approval
             </p>
           </CardContent>
         </Card>
@@ -171,9 +268,11 @@ export default function AnalyticsPage() {
             <CardTitle className="text-base">Contact Queries</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold">{analytics.totalContactQueries}</div>
+            <div className="text-3xl font-bold">
+              <AnimatedNumber value={analytics.totalContactQueries} />
+            </div>
             <p className="text-sm text-muted-foreground mt-2">
-              {analytics.pendingContactQueries} pending
+              <AnimatedNumber value={analytics.pendingContactQueries} /> pending
             </p>
           </CardContent>
         </Card>
@@ -183,7 +282,9 @@ export default function AnalyticsPage() {
             <CardTitle className="text-base">Customer Feedback</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold">{analytics.totalFeedback}</div>
+            <div className="text-3xl font-bold">
+              <AnimatedNumber value={analytics.totalFeedback} />
+            </div>
             <p className="text-sm text-muted-foreground mt-2">
               Total feedback entries
             </p>
@@ -195,9 +296,11 @@ export default function AnalyticsPage() {
             <CardTitle className="text-base">Subscriptions</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold">{analytics.totalSubscriptions}</div>
+            <div className="text-3xl font-bold">
+              <AnimatedNumber value={analytics.totalSubscriptions} />
+            </div>
             <p className="text-sm text-muted-foreground mt-2">
-              {analytics.activeSubscriptions} active
+              <AnimatedNumber value={analytics.activeSubscriptions} /> active
             </p>
           </CardContent>
         </Card>
@@ -353,13 +456,13 @@ export default function AnalyticsPage() {
           </CardHeader>
           <CardContent>
             <p className="text-sm text-muted-foreground">
-              To enable full monitoring features, integrate with Sentry or LogRocket. This will provide:
+              Error logging is enabled via Vercel Logs (free, built-in). View logs in your Vercel dashboard.
             </p>
             <ul className="list-disc list-inside mt-3 space-y-1 text-sm text-muted-foreground">
-              <li>Real-time error tracking and alerts</li>
-              <li>Performance monitoring and analytics</li>
-              <li>User session recordings</li>
-              <li>Detailed error stack traces</li>
+              <li>✅ Real-time error tracking (Vercel Logs)</li>
+              <li>✅ Performance monitoring (Vercel Analytics)</li>
+              <li>✅ Detailed error stack traces</li>
+              <li>✅ Automatic log capture in production</li>
             </ul>
           </CardContent>
         </Card>

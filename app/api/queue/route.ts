@@ -152,15 +152,22 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get the next queue number
-    const { data: lastQueue } = await supabase
+    // Get the next queue number based on today's date (resets daily at midnight)
+    const today = new Date();
+    const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999);
+    
+    const { data: todayQueues } = await supabase
       .from('Queue')
       .select('queue_number')
+      .gte('created_at', startOfDay.toISOString())
+      .lte('created_at', endOfDay.toISOString())
       .order('queue_number', { ascending: false })
-      .limit(1)
-      .single();
+      .limit(1);
 
-    const nextQueueNumber = lastQueue?.queue_number ? lastQueue.queue_number + 1 : 1;
+    const nextQueueNumber = todayQueues && todayQueues.length > 0 && todayQueues[0]?.queue_number
+      ? todayQueues[0].queue_number + 1
+      : 1;
 
     // Build insert data
     const insertData: any = {

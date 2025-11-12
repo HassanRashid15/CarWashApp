@@ -17,22 +17,16 @@ export default function Error({
   const isDevelopment = process.env.NODE_ENV === 'development';
 
   useEffect(() => {
-    // Log error in development
-    if (isDevelopment) {
-      console.error('Application error:', error);
-    }
-    
-    // Send to Sentry
-    try {
-      const { captureException } = require('@/lib/monitoring/sentry');
+    // Log error to Vercel Logs (automatically captured in production)
+    if (typeof window !== 'undefined') {
+      const { captureException } = require('@/lib/monitoring/vercel-logs');
       captureException(error, {
         errorPage: true,
         digest: error.digest,
+        pathname: window.location.pathname,
       });
-    } catch (e) {
-      // Sentry not available, continue
     }
-  }, [error, isDevelopment]);
+  }, [error]);
 
   return (
     <div className="flex min-h-screen items-center justify-center p-4 bg-background">

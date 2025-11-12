@@ -6,7 +6,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { rateLimiter, getRateLimitIdentifier, createRateLimitResponse, RateLimitConfig } from './rate-limit';
 import { cache, CacheKeys } from '@/lib/cache/cache';
 import { getUserFriendlyMessage, ErrorMessages } from '@/lib/utils/error-messages';
-import { captureException } from '@/lib/monitoring/sentry';
+import { captureException } from '@/lib/monitoring/vercel-logs';
 
 interface ApiHandlerOptions {
   rateLimit?: keyof typeof RateLimitConfig;
@@ -78,7 +78,7 @@ export function withApiWrapper<T = any>(
       // Execute handler
       return await handler(req, context);
     } catch (error: any) {
-      // Log to Sentry
+      // Log error to Vercel Logs (automatically captured in production)
       captureException(error instanceof Error ? error : new Error(String(error)), {
         url: req.url,
         method: req.method,

@@ -56,7 +56,7 @@ export async function GET(request: NextRequest) {
       adminSupabase.from('Customers').select('*', { count: 'exact', head: true }),
       adminSupabase.from('subscriptions').select('*'),
       adminSupabase.from('Contact_us').select('*'),
-      adminSupabase.from('feedback').select('*', { count: 'exact', head: true }),
+      adminSupabase.from('feedbacks').select('*', { count: 'exact', head: true }),
     ]);
 
     // Calculate subscription metrics

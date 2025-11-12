@@ -40,20 +40,18 @@ class ErrorBoundaryClass extends React.Component<ErrorBoundaryProps, ErrorBounda
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    // Log error to console in development
-    if (process.env.NODE_ENV === 'development') {
-      console.error('Error caught by boundary:', error, errorInfo);
-    }
-
-    // Send to Sentry
-    try {
-      const { captureException } = require('@/lib/monitoring/sentry');
-      captureException(error, {
-        componentStack: errorInfo.componentStack,
-        errorBoundary: true,
-      });
-    } catch (e) {
-      // Sentry not available, continue
+    // Log error to Vercel Logs (automatically captured in production)
+    if (typeof window !== 'undefined') {
+      try {
+        const { captureException } = require('@/lib/monitoring/vercel-logs');
+        captureException(error, {
+          componentStack: errorInfo.componentStack,
+          errorBoundary: true,
+        });
+      } catch (e) {
+        // Fallback to console if logger not available
+        console.error('Error caught by boundary:', error, errorInfo);
+      }
     }
 
     this.setState({

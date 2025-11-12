@@ -206,13 +206,13 @@ export default function MonitoringPage() {
         </CardHeader>
         <CardContent>
           <p className="text-sm text-muted-foreground">
-            To enable full monitoring features, integrate with Sentry or LogRocket. This will provide:
+            Error logging is enabled via Vercel Logs (free, built-in). View logs in your Vercel dashboard.
           </p>
           <ul className="list-disc list-inside mt-3 space-y-1 text-sm text-muted-foreground">
-            <li>Real-time error tracking and alerts</li>
-            <li>Performance monitoring and analytics</li>
-            <li>User session recordings</li>
-            <li>Detailed error stack traces</li>
+            <li>✅ Real-time error tracking (Vercel Logs)</li>
+            <li>✅ Performance monitoring (Vercel Analytics)</li>
+            <li>✅ Detailed error stack traces</li>
+            <li>✅ Automatic log capture in production</li>
           </ul>
         </CardContent>
       </Card>

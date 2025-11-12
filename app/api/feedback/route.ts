@@ -201,18 +201,12 @@ export async function GET(request: NextRequest) {
       .eq('id', session.user.id)
       .single();
 
-    // Fetch feedbacks
-    let query = adminSupabase
+    // Fetch feedbacks - all admins see all feedbacks
+    // This allows admins to see feedback from all customers, including public feedback
+    const { data: feedbacks, error } = await adminSupabase
       .from('feedbacks')
       .select('*')
       .order('submitted_at', { ascending: false });
-
-    // If not super admin, only show their own feedbacks
-    if (profile?.role !== 'super_admin') {
-      query = query.eq('admin_id', session.user.id);
-    }
-
-    const { data: feedbacks, error } = await query;
 
     if (error) {
       console.error('Error fetching feedbacks:', error);
@@ -222,11 +216,102 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    console.log(`📊 Fetched ${feedbacks?.length || 0} feedbacks for user ${session.user.id}`);
     return NextResponse.json({ feedbacks: feedbacks || [] });
   } catch (error) {
     console.error('Error in feedback GET API:', error);
     return NextResponse.json(
       { error: 'Failed to fetch feedbacks', details: (error as Error).message },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const supabase = await createClient();
+
+    // Check authentication
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    if (!session) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+
+    // Get feedback ID from URL
+    const url = new URL(request.url);
+    const feedbackId = url.searchParams.get('id');
+
+    if (!feedbackId) {
+      return NextResponse.json(
+        { error: 'Feedback ID is required' },
+        { status: 400 }
+      );
+    }
+
+    // Check subscription and feature access
+    const subscriptionCheck = await checkSubscriptionAccess(session.user.id);
+    if (!subscriptionCheck.allowed) {
+      return NextResponse.json(
+        { error: subscriptionCheck.error || 'Subscription required' },
+        { status: 403 }
+      );
+    }
+
+    // Get user profile to check if super admin
+    const adminSupabase = createAdminClient();
+    const { data: profile } = await adminSupabase
+      .from('profiles')
+      .select('role')
+      .eq('id', session.user.id)
+      .maybeSingle();
+
+    // Check if user owns the feedback or is super admin
+    const { data: feedback } = await adminSupabase
+      .from('feedbacks')
+      .select('admin_id')
+      .eq('id', feedbackId)
+      .single();
+
+    if (!feedback) {
+      return NextResponse.json(
+        { error: 'Feedback not found' },
+        { status: 404 }
+      );
+    }
+
+    // Only allow deletion if user is super admin or owns the feedback
+    if (profile?.role !== 'super_admin' && feedback.admin_id !== session.user.id) {
+      return NextResponse.json(
+        { error: 'Unauthorized to delete this feedback' },
+        { status: 403 }
+      );
+    }
+
+    // Delete feedback
+    const { error } = await adminSupabase
+      .from('feedbacks')
+      .delete()
+      .eq('id', feedbackId);
+
+    if (error) {
+      console.error('Error deleting feedback:', error);
+      return NextResponse.json(
+        { error: 'Failed to delete feedback', details: error.message },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({ success: true, message: 'Feedback deleted successfully' });
+  } catch (error) {
+    console.error('Error in feedback DELETE API:', error);
+    return NextResponse.json(
+      { error: 'Failed to delete feedback', details: (error as Error).message },
       { status: 500 }
     );
   }

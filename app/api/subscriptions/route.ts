@@ -8,7 +8,7 @@ import { check29DayReminderForUser } from '@/lib/utils/subscription-29day-remind
 import { withApiWrapper } from '@/lib/middleware/api-wrapper';
 import { cache, CacheKeys } from '@/lib/cache/cache';
 import { getUserFriendlyMessage } from '@/lib/utils/error-messages';
-import { captureException } from '@/lib/monitoring/sentry';
+import { captureException } from '@/lib/monitoring/vercel-logs';
 
 /**
  * GET - Get current subscription info
@@ -162,7 +162,7 @@ async function getSubscriptionHandler(request: NextRequest) {
       headers: { 'X-Cache': 'MISS' },
     });
   } catch (error) {
-    console.error('Error fetching subscription:', error);
+    // Log to Vercel Logs (automatically captured in production)
     captureException(error instanceof Error ? error : new Error(String(error)), {
       route: '/api/subscriptions',
       method: 'GET',

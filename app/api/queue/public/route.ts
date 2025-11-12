@@ -17,7 +17,7 @@ export async function GET(request: NextRequest) {
     // This is safe since we're only reading and filtering specific data
     const supabase = createSupabaseClient(supabaseUrl, serviceRoleKey);
     
-    // Fetch only active queue entries (waiting or washing status) with customer and worker info
+    // Fetch queue entries including completed ones (for feedback) with customer and worker info
     const { data: queueEntries, error } = await supabase
       .from('Queue')
       .select(`
@@ -26,10 +26,12 @@ export async function GET(request: NextRequest) {
         status,
         service_type,
         created_at,
-        customer:Customers(id, name),
-        worker:Workers(id, name)
+        customer_id,
+        customer:Customers(id, name, phone, vehicle_number, vehicle_type, unique_id, car_name, car_year, bike_name, bike_year),
+        worker:Workers(id, name),
+        feedbacks:feedbacks(id)
       `)
-      .in('status', ['waiting', 'washing'])
+      .in('status', ['waiting', 'washing', 'completed'])
       .order('queue_number', { ascending: true })
       .order('created_at', { ascending: false });
 
